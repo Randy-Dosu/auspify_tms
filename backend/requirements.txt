@@ -1,0 +1,7 @@
+# ---------------------------------------------------------------------------
+# Backend dependencies (Step 0)
+# Install with:  pip install -r requirements.txt
+# ---------------------------------------------------------------------------
+Flask==3.0.3          # Web framework
+Flask-Cors==4.0.1     # CORS restricted to the React dev/prod origin
+python-dotenv==1.0.1  # Loads secrets from backend/.env (never committed)
