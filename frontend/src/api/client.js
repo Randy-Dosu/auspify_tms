@@ -112,3 +112,25 @@ export const authApi = {
   me: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
 }
+
+// ---------------------------------------------------------------------------
+// Step 2: exams and attempts
+// ---------------------------------------------------------------------------
+export const examsApi = {
+  list: () => request('/exams'),
+  get: (id) => request(`/exams/${id}`),
+  create: (body) => request('/exams', { method: 'POST', body }),
+  update: (id, body) => request(`/exams/${id}`, { method: 'PUT', body }),
+  remove: (id) => request(`/exams/${id}`, { method: 'DELETE' }),
+  questions: (id) => request(`/exams/${id}/questions`),
+  addQuestion: (id, body) => request(`/exams/${id}/questions`, { method: 'POST', body }),
+  updateQuestion: (qid, body) => request(`/questions/${qid}`, { method: 'PUT', body }),
+  deleteQuestion: (qid) => request(`/questions/${qid}`, { method: 'DELETE' }),
+}
+
+export const attemptsApi = {
+  start: (examId) => request(`/exams/${examId}/start`, { method: 'POST' }),
+  get: (id) => request(`/attempts/${id}`),
+  answer: (id, body) => request(`/attempts/${id}/answer`, { method: 'PUT', body }),
+  submit: (id) => request(`/attempts/${id}/submit`, { method: 'POST' }),
+}

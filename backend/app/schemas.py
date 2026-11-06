@@ -56,3 +56,86 @@ class CreateUserSchema(_Base):
     role = fields.String(
         required=True, validate=validate.OneOf(["admin", "teacher", "student"])
     )
+
+
+# ---------------------------------------------------------------------------
+# Step 2: exams, questions, options, answers
+# ---------------------------------------------------------------------------
+from marshmallow import validates_schema  # noqa: E402  (grouped with the schemas below)
+
+from .security import from_iso  # noqa: E402
+
+QUESTION_TYPES = ["single_choice", "multiple_choice", "true_false"]
+
+
+class OptionSchema(_Base):
+    option_text = fields.String(required=True, validate=validate.Length(min=1, max=500))
+    is_correct = fields.Boolean(load_default=False)
+
+
+class QuestionSchema(_Base):
+    question_text = fields.String(required=True, validate=validate.Length(min=5, max=2000))
+    question_type = fields.String(required=True, validate=validate.OneOf(QUESTION_TYPES))
+    marks = fields.Float(required=True, validate=validate.Range(min=0.01, max=1000))
+    negative_marks = fields.Float(load_default=0, validate=validate.Range(min=0, max=1000))
+    position = fields.Integer(load_default=None, allow_none=True, validate=validate.Range(min=0))
+    options = fields.List(
+        fields.Nested(OptionSchema), required=True, validate=validate.Length(min=2, max=6)
+    )
+
+    @validates_schema
+    def check_question(self, data, **kwargs):
+        """Business rules: correct answers, marks, option counts."""
+        errors = {}
+        options = data.get("options") or []
+        correct = [o for o in options if o.get("is_correct")]
+        qtype = data.get("question_type")
+
+        if not correct:
+            errors["options"] = ["At least one option must be marked correct."]
+        elif qtype in ("single_choice", "true_false") and len(correct) != 1:
+            errors["options"] = ["Exactly one option must be correct for this question type."]
+        elif qtype == "true_false" and len(options) != 2:
+            errors["options"] = ["True/false questions need exactly two options."]
+
+        marks = data.get("marks")
+        negative = data.get("negative_marks") or 0
+        if marks is not None and negative is not None and negative > marks:
+            errors["negative_marks"] = ["Negative marks cannot exceed the question marks."]
+
+        if errors:
+            raise ValidationError(errors)
+
+
+class ExamSchema(_Base):
+    title = fields.String(required=True, validate=validate.Length(min=3, max=200))
+    description = fields.String(load_default="", validate=validate.Length(max=5000))
+    subject = fields.String(load_default="", validate=validate.Length(max=100))
+    duration_minutes = fields.Integer(required=True, validate=validate.Range(min=1, max=600))
+    pass_marks = fields.Float(load_default=0, validate=validate.Range(min=0, max=100000))
+    start_time = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=64))
+    end_time = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=64))
+    is_published = fields.Boolean(load_default=False)
+    allow_retakes = fields.Boolean(load_default=False)
+
+    @validates_schema
+    def check_window(self, data, **kwargs):
+        start_raw = data.get("start_time")
+        end_raw = data.get("end_time")
+        start = from_iso(start_raw) if start_raw else None
+        end = from_iso(end_raw) if end_raw else None
+        if start_raw and start is None:
+            raise ValidationError({"start_time": ["Use an ISO-8601 date-time."]})
+        if end_raw and end is None:
+            raise ValidationError({"end_time": ["Use an ISO-8601 date-time."]})
+        if start and end and end <= start:
+            raise ValidationError({"end_time": ["end_time must be after start_time."]})
+
+
+class AnswerSchema(_Base):
+    question_id = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
+    selected_option_ids = fields.List(
+        fields.Integer(strict=True, validate=validate.Range(min=1)),
+        load_default=list,
+        validate=validate.Length(max=6),
+    )
