@@ -61,6 +61,7 @@ python -c "import secrets; print('JWT_SECRET_KEY=' + secrets.token_hex(32))"
 | `APP_DEBUG` | no (default `0`) | `1` only in development |
 | `DATABASE_PATH` | no | SQLite file (default `backend/instance/exam_system.db`) |
 | `CORS_ORIGINS` | no | Comma-separated browser origins allowed to call the API |
+| `ALLOW_PREVIEW_EMBEDDING` | no (default `1` outside production) | Lets the `/` status page be framed by a hosted dev preview |
 | `PORT` | no (default `5000`) | API port |
 
 `backend/.env` is git-ignored. Only `.env.example` is committed; the app
@@ -97,14 +98,19 @@ API answers through the Vite `/api` proxy.
 - Secrets come from environment variables only; no key is hardcoded.
 - CORS is restricted to the configured frontend origin(s), never `*`.
 - Baseline security headers on every response: `X-Content-Type-Options`,
-  `X-Frame-Options`, `Content-Security-Policy`, `Referrer-Policy`, and
-  `Cache-Control: no-store` for API responses.
+  `Referrer-Policy`, and a strict `Content-Security-Policy`
+  (`default-src 'none'; frame-ancestors 'none'`) plus `Cache-Control: no-store`
+  on `/api/*`.
+- `GET /` serves a script-free HTML status page to browsers (raw JSON index to
+  API clients). Only that page may be framed, and only in development
+  (`ALLOW_PREVIEW_EMBEDDING`), so hosted preview panes render it; API routes are
+  never embeddable and production keeps `X-Frame-Options: DENY` everywhere.
 - Errors are returned as JSON `{"error": {"code", "message"}}` with no stack traces.
 - `APP_DEBUG=1` is development-only; production runs with debug off.
 
 ## 4. Verification harness
 
-`scripts/verify_step0.sh` re-runs the whole Step 0 checklist (25 checks:
+`scripts/verify_step0.sh` re-runs the whole Step 0 checklist (29 checks:
 health endpoint, security headers, JSON errors, CORS, secret hygiene,
 frontend serving + proxy + production build):
 
@@ -113,4 +119,4 @@ frontend serving + proxy + production build):
 ./scripts/verify_step0.sh
 ```
 
-Expected final line: `RESULT: 25 passed, 0 failed`.
+Expected final line: `RESULT: 29 passed, 0 failed`.

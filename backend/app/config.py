@@ -77,3 +77,10 @@ class Config:
     MAX_CONTENT_LENGTH = 2 * 1024 * 1024  # 2 MB
     # Never leak stack traces / interactive debugger through the API.
     PROPAGATE_EXCEPTIONS = False
+
+    # Allow the human-facing status page at "/" to be shown inside an iframe
+    # (hosted dev previews embed the app). API responses are NEVER embeddable,
+    # and this is off by default in production.
+    ALLOW_PREVIEW_EMBEDDING = env_bool(
+        "ALLOW_PREVIEW_EMBEDDING", default=(ENV_NAME != "production")
+    )

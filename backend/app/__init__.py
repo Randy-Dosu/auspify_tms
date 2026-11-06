@@ -6,7 +6,7 @@ means tests (added in Step 5) can spin up isolated app instances.
 
 import logging
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
@@ -29,15 +29,17 @@ def create_app(config_class=Config) -> Flask:
 
 
 def _register_root_route(app: Flask) -> None:
-    """Describe the API at "/" instead of returning a bare 404.
+    """Serve a status page to browsers and a JSON index to API clients.
 
-    Handy when the API port is opened directly (preview/debugging): it tells
-    you what this service is and which endpoints exist. It exposes no
-    configuration or secrets.
+    Opening the API port in a browser used to show raw JSON (or a bare 404),
+    which looks like the server is down. Browsers now get a small,
+    script-free HTML page; curl/axios/fetch clients still get JSON.
     """
 
     @app.get("/")
     def api_index():
+        if _client_wants_html():
+            return Response(_status_page_html(), mimetype="text/html")
         return jsonify(
             {
                 "service": "auspify-tms-api",
@@ -46,6 +48,62 @@ def _register_root_route(app: Flask) -> None:
                 "docs": "The React UI runs on the frontend origin (default :5173).",
             }
         )
+
+
+def _client_wants_html() -> bool:
+    """True for browsers, False for scripted clients.
+
+    Browsers explicitly list text/html and do not ask for application/json;
+    curl, fetch() and axios send */* or application/json.
+    """
+    accept = request.headers.get("Accept", "")
+    return "text/html" in accept and "application/json" not in accept
+
+
+def _status_page_html() -> str:
+    """Tiny, dependency-free status page: no JavaScript, no external assets."""
+    return """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Auspify TMS API</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #f5f7fb; color: #1e293b; padding: 2rem;
+      }
+      main {
+        max-width: 34rem; background: #fff; border: 1px solid #e2e8f0;
+        border-radius: 12px; padding: 1.75rem 2rem;
+        box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.06);
+      }
+      h1 { margin: 0 0 .25rem; font-size: 1.35rem; }
+      p { margin: .4rem 0; color: #475569; line-height: 1.55; }
+      .ok { display: inline-block; background: #dcfce7; color: #15803d;
+            border: 1px solid #bbf7d0; border-radius: 999px;
+            padding: .15rem .6rem; font-size: .78rem; font-weight: 600; }
+      code { background: #f1f5f9; border-radius: 4px; padding: .1rem .35rem;
+             font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; }
+      ul { padding-left: 1.1rem; color: #334155; font-size: .92rem; }
+      footer { margin-top: 1.25rem; font-size: .82rem; color: #64748b; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="ok">&#9679; API is running</span>
+      <h1>Auspify TMS &mdash; Online Examination System API</h1>
+      <p>This port serves the JSON API, not the user interface.</p>
+      <ul>
+        <li><code>GET /api/health</code> &mdash; liveness check</li>
+        <li><code>/api/auth/*</code>, <code>/api/exams</code>, <code>/api/reports/*</code> &mdash; added in later steps</li>
+      </ul>
+      <footer>The React UI runs on the frontend dev server (default port 5173).</footer>
+    </main>
+  </body>
+</html>"""
 
 
 # ---------------------------------------------------------------------------
@@ -116,18 +174,36 @@ def _register_error_handlers(app: Flask) -> None:
 
 
 def _register_security_headers(app: Flask) -> None:
-    """Attach baseline security headers to every response."""
+    """Attach security headers to every response.
+
+    Two profiles:
+      * /api/*  - locked down completely. JSON only, never framed, never cached.
+      * everything else - the human-facing status page. In development
+        (ALLOW_PREVIEW_EMBEDDING=1) it may be framed by a hosted preview,
+        because otherwise the preview pane renders blank and the app looks
+        down. Scripts are always forbidden there; production keeps DENY.
+    """
+
+    strict_csp = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    page_csp = (
+        "default-src 'none'; style-src 'unsafe-inline'; "
+        "frame-ancestors *; base-uri 'none'; form-action 'none'"
+    )
 
     @app.after_request
     def set_security_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
-        # The API only ever returns JSON: forbid loading anything at all.
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
-        )
-        # API responses must not be cached by browsers or proxies.
+
         if request.path.startswith("/api/"):
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = strict_csp
             response.headers["Cache-Control"] = "no-store"
+        elif app.config.get("ALLOW_PREVIEW_EMBEDDING", False):
+            # Embeddable status page: no X-Frame-Options, frame-ancestors *.
+            response.headers["Content-Security-Policy"] = page_csp
+        else:
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = strict_csp
+
         return response

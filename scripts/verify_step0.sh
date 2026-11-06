@@ -27,6 +27,13 @@ check "A8 disallowed origin gets no CORS header" "$B" "0"
 check "A9 API index at / returns 200 (preview page)" "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/)" "200"
 curl -s http://127.0.0.1:5000/ | grep -q '"service": "auspify-tms-api"' && ok "A10 API index describes the service, no config dump" || bad "A10 API index body"
 
+curl -s -D /tmp/page.txt -o /tmp/page.html -H 'Accept: text/html,application/xhtml+xml,*/*;q=0.8' http://127.0.0.1:5000/ >/dev/null
+grep -q '<title>Auspify TMS API</title>' /tmp/page.html && ok "A11 browser gets the HTML status page on :5000" || bad "A11 browser status page"
+grep -qi 'x-frame-options' /tmp/page.txt && bad "A12 status page blocked from being framed (preview would be blank)" || ok "A12 status page is embeddable (no X-Frame-Options)"
+grep -qi "frame-ancestors \*" /tmp/page.txt && ok "A13 status page CSP allows framing, scripts still forbidden" || bad "A13 status page CSP"
+curl -s -D /tmp/api.txt -o /dev/null http://127.0.0.1:5000/api/health
+grep -qi 'x-frame-options: DENY' /tmp/api.txt && ok "A14 API responses stay locked down (X-Frame-Options: DENY)" || bad "A14 API framing headers"
+
 echo "== B. Secrets =="
 S=$(grep '^SECRET_KEY=' /home/user/auspify_tms/backend/.env | cut -d= -f2)
 J=$(grep '^JWT_SECRET_KEY=' /home/user/auspify_tms/backend/.env | cut -d= -f2)
