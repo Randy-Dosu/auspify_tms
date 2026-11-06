@@ -24,6 +24,9 @@ check "A7 allowed origin gets CORS header" "$A" "1"
 B=$(curl -s -D - -o /dev/null -H 'Origin: http://evil.example.com' http://127.0.0.1:5000/api/health | grep -ci 'access-control-allow-origin')
 check "A8 disallowed origin gets no CORS header" "$B" "0"
 
+check "A9 API index at / returns 200 (preview page)" "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/)" "200"
+curl -s http://127.0.0.1:5000/ | grep -q '"service": "auspify-tms-api"' && ok "A10 API index describes the service, no config dump" || bad "A10 API index body"
+
 echo "== B. Secrets =="
 S=$(grep '^SECRET_KEY=' /home/user/auspify_tms/backend/.env | cut -d= -f2)
 J=$(grep '^JWT_SECRET_KEY=' /home/user/auspify_tms/backend/.env | cut -d= -f2)

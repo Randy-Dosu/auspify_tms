@@ -20,11 +20,32 @@ def create_app(config_class=Config) -> Flask:
 
     _configure_logging(app)
     _configure_cors(app)
+    _register_root_route(app)
     _register_blueprints(app)
     _register_error_handlers(app)
     _register_security_headers(app)
 
     return app
+
+
+def _register_root_route(app: Flask) -> None:
+    """Describe the API at "/" instead of returning a bare 404.
+
+    Handy when the API port is opened directly (preview/debugging): it tells
+    you what this service is and which endpoints exist. It exposes no
+    configuration or secrets.
+    """
+
+    @app.get("/")
+    def api_index():
+        return jsonify(
+            {
+                "service": "auspify-tms-api",
+                "message": "Online Examination System API. JSON only - use /api/*.",
+                "endpoints": {"health": "/api/health"},
+                "docs": "The React UI runs on the frontend origin (default :5173).",
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -104,7 +104,7 @@ API answers through the Vite `/api` proxy.
 
 ## 4. Verification harness
 
-`scripts/verify_step0.sh` re-runs the whole Step 0 checklist (22 checks:
+`scripts/verify_step0.sh` re-runs the whole Step 0 checklist (25 checks:
 health endpoint, security headers, JSON errors, CORS, secret hygiene,
 frontend serving + proxy + production build):
 
@@ -113,4 +113,4 @@ frontend serving + proxy + production build):
 ./scripts/verify_step0.sh
 ```
 
-Expected final line: `RESULT: 23 passed, 0 failed`.
+Expected final line: `RESULT: 25 passed, 0 failed`.
