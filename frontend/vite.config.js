@@ -20,4 +20,11 @@ export default defineConfig({
       },
     },
   },
+  // UI tests run in jsdom (no browser needed).
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+    css: false,
+  },
 })

@@ -5,12 +5,17 @@ means tests (added in Step 5) can spin up isolated app instances.
 """
 
 import logging
+import os
 
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
+from marshmallow import ValidationError
 from werkzeug.exceptions import HTTPException
 
 from .config import Config
+from .db import init_app as init_db_app
+from .extensions import limiter
+from .security import init_jwt
 
 
 def create_app(config_class=Config) -> Flask:
@@ -18,6 +23,7 @@ def create_app(config_class=Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    _ensure_instance_dir(app)
     _configure_logging(app)
     _configure_cors(app)
     _register_root_route(app)
@@ -25,7 +31,19 @@ def create_app(config_class=Config) -> Flask:
     _register_error_handlers(app)
     _register_security_headers(app)
 
+    # Extensions
+    init_jwt(app)
+    limiter.init_app(app)
+    init_db_app(app)
+
     return app
+
+
+def _ensure_instance_dir(app: Flask) -> None:
+    """Make sure the folder holding the SQLite file exists."""
+    directory = os.path.dirname(app.config["DATABASE_PATH"])
+    if directory:
+        os.makedirs(directory, exist_ok=True)
 
 
 def _register_root_route(app: Flask) -> None:
@@ -139,9 +157,11 @@ def _configure_cors(app: Flask) -> None:
 
 def _register_blueprints(app: Flask) -> None:
     """Attach all API blueprints under /api."""
+    from .routes.auth import bp as auth_bp
     from .routes.health import bp as health_bp
 
     app.register_blueprint(health_bp, url_prefix="/api")
+    app.register_blueprint(auth_bp)  # prefix lives on the blueprint: /api/auth
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -154,6 +174,23 @@ def _register_error_handlers(app: Flask) -> None:
         return (
             jsonify({"error": {"code": error.code, "message": message}}),
             error.code,
+        )
+
+    @app.errorhandler(ValidationError)
+    def handle_validation_error(error: ValidationError):
+        # Defensive: route code converts schema errors itself, so this is a net
+        # for anything unexpected - still a clean 400, never a 500.
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": 400,
+                        "message": "Validation failed.",
+                        "fields": error.messages,
+                    }
+                }
+            ),
+            400,
         )
 
     @app.errorhandler(Exception)

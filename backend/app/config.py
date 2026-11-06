@@ -7,6 +7,7 @@ instead of silently falling back to an insecure default.
 """
 
 import os
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -60,12 +61,30 @@ class Config:
         os.environ.get("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "30")
     )
     JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
+    # Flask-JWT-Extended settings: tokens only travel in the Authorization
+    # header ("Bearer <token>"), never in cookies or query strings.
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRES_MINUTES)
+    JWT_TOKEN_LOCATION = ["headers"]
+    JWT_HEADER_TYPE = "Bearer"
+
+    # --- Authentication hardening -----------------------------------------
+    MAX_FAILED_LOGINS = int(os.environ.get("MAX_FAILED_LOGINS", "5"))
+    LOCKOUT_MINUTES = int(os.environ.get("LOCKOUT_MINUTES", "15"))
+    # Brute-force protection per client IP (Flask-Limiter).
+    LOGIN_RATE_LIMIT = os.environ.get("LOGIN_RATE_LIMIT", "10 per minute")
+    REGISTER_RATE_LIMIT = os.environ.get("REGISTER_RATE_LIMIT", "20 per minute")
+    RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+    RATELIMIT_ENABLED = env_bool("RATELIMIT_ENABLED", default=True)
+    RATELIMIT_HEADERS_ENABLED = True
 
     # --- Database (used from Step 1 onwards) ------------------------------
     # Stored under backend/instance/ which is git-ignored.
-    DATABASE_PATH = os.environ.get(
+    _db_env = os.environ.get(
         "DATABASE_PATH", os.path.join(BASE_DIR, "instance", "exam_system.db")
     )
+    # Relative paths are resolved against backend/ so the app can be started
+    # from any working directory.
+    DATABASE_PATH = _db_env if os.path.isabs(_db_env) else os.path.join(BASE_DIR, _db_env)
 
     # --- Networking / CORS ------------------------------------------------
     # Only the React app origin may call the API from a browser.

@@ -193,3 +193,222 @@ code {
 .checklist li {
   margin-bottom: 0.3rem;
 }
+
+/* ---------------------------------------------------------------------------
+   App shell, auth pages and form controls (Step 1)
+   --------------------------------------------------------------------------- */
+
+/* --- Authenticated shell ------------------------------------------------- */
+.app-bar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.85rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.brand span {
+  color: var(--primary);
+}
+
+.app-nav {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.92rem;
+  flex: 1;
+}
+
+.app-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.app-nav a:hover {
+  color: var(--text);
+}
+
+.app-nav a.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+.app-user {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.user-name {
+  font-weight: 600;
+}
+
+.small-btn {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+/* --- Auth pages --------------------------------------------------------- */
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 26rem;
+  margin: 0;
+}
+
+.auth-card h1 {
+  margin-bottom: 0.15rem;
+}
+
+.auth-footer {
+  margin: 1rem 0 0;
+  text-align: center;
+}
+
+/* --- Forms -------------------------------------------------------------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.9rem;
+}
+
+.field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 1px;
+  border-color: var(--primary);
+}
+
+.field input[aria-invalid='true'] {
+  border-color: #fca5a5;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.field-error {
+  font-size: 0.8rem;
+  color: var(--danger);
+}
+
+.btn.block {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+/* --- Bits --------------------------------------------------------------- */
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.badge.success {
+  background: var(--success-bg);
+  color: var(--success);
+  border-color: #bbf7d0;
+}
+
+.badge.info {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.badge.danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: #fecaca;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.page-header h1 {
+  margin-bottom: 0.15rem;
+}
+
+.page-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.grid.two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.center-card {
+  text-align: center;
+  max-width: 32rem;
+  margin: 4rem auto;
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+.alert.error,
+.alert.success {
+  display: block;
+}
