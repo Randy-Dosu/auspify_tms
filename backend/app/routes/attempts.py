@@ -62,7 +62,11 @@ def _finalise_attempt(attempt, exam, status: str):
             (status, now, attempt["id"]),
         )
 
-    return fetch_attempt(attempt["id"])
+    # Grade immediately (server-side, idempotent) so the result is ready the
+    # moment the attempt closes - including auto-submissions at time-out.
+    from ..grading import grade_attempt
+
+    return grade_attempt(attempt["id"])
 
 
 def _auto_submit_if_expired(attempt, exam):
@@ -285,3 +289,114 @@ def submit_attempt(attempt_id):
         attempt = _finalise_attempt(attempt, exam, "expired" if state["expired"] else "submitted")
 
     return jsonify(_attempt_payload(attempt, exam)), 200
+
+
+# ---------------------------------------------------------------------------
+# Result (Step 3)
+# ---------------------------------------------------------------------------
+@bp.get("/attempts/<int:attempt_id>/result")
+@role_required("student", "teacher", "admin")
+def attempt_result(attempt_id):
+    """Graded result.
+
+    Students see only their own attempt, and the per-question review only once
+    the exam window has closed. Teachers see results for their own exams,
+    admins see everything.
+    """
+    from ..grading import grade_attempt
+    from ..security import from_iso
+    from ..services import fetch_options, fetch_question, serialise_attempt
+
+    user = current_user()
+    attempt = fetch_attempt(attempt_id)
+    if attempt is None:
+        return error(404, "Result not found.")
+
+    exam = fetch_exam(attempt["exam_id"])
+    if exam is None:
+        return error(404, "Result not found.")
+
+    is_owner = attempt["student_id"] == user["id"]
+    if user["role"] == "admin":
+        is_staff = True
+    elif user["role"] == "teacher":
+        is_staff = exam["created_by"] == user["id"]
+    else:
+        is_staff = False
+
+    if not (is_owner or is_staff):
+        # 404 keeps other students' attempt ids unguessable.
+        return error(404, "Result not found.")
+
+    if attempt["status"] == "in_progress":
+        return error(409, "This attempt is still in progress.")
+
+    if attempt["score"] is None:
+        attempt = grade_attempt(attempt["id"])
+
+    end = from_iso(exam["end_time"])
+    window_closed = end is not None and utcnow() > end
+    review_available = bool(is_staff or window_closed)
+
+    payload = {
+        "attempt": serialise_attempt(attempt),
+        "exam": {
+            "id": exam["id"],
+            "title": exam["title"],
+            "subject": exam["subject"],
+            "total_marks": exam["total_marks"],
+            "pass_marks": exam["pass_marks"],
+            "end_time": exam["end_time"],
+        },
+        "result": {
+            "score": attempt["score"],
+            "percentage": attempt["percentage"],
+            "passed": None if attempt["passed"] is None else bool(attempt["passed"]),
+            "status": attempt["status"],
+        },
+        "review_available": review_available,
+        "review_reason": None
+        if review_available
+        else "Question review opens when the exam window closes.",
+    }
+
+    if review_available:
+        db = get_db()
+        answers = {
+            row["question_id"]: row
+            for row in db.execute(
+                "SELECT question_id, selected_option_ids, is_correct, marks_awarded"
+                " FROM answers WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchall()
+        }
+        questions = db.execute(
+            "SELECT * FROM questions WHERE exam_id = ? ORDER BY position, id", (exam["id"],)
+        ).fetchall()
+        review = []
+        for question in questions:
+            row = answers.get(question["id"])
+            selected = []
+            if row is not None:
+                try:
+                    import json as _json
+
+                    selected = _json.loads(row["selected_option_ids"] or "[]")
+                except ValueError:
+                    selected = []
+            review.append(
+                {
+                    "id": question["id"],
+                    "question_text": question["question_text"],
+                    "question_type": question["question_type"],
+                    "marks": question["marks"],
+                    "negative_marks": question["negative_marks"],
+                    "options": fetch_options(question["id"], include_correct=True),
+                    "selected_option_ids": selected,
+                    "is_correct": None if row is None else bool(row["is_correct"]),
+                    "marks_awarded": 0 if row is None else row["marks_awarded"],
+                }
+            )
+        payload["questions"] = review
+
+    return jsonify(payload), 200

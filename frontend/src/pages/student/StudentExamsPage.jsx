@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { attemptsApi, examsApi } from '../../api/client'
 import { Alert, Badge, PageHeader, Spinner } from '../../components/ui'
 
@@ -96,12 +96,9 @@ export default function StudentExamsPage() {
                   </button>
                 )}
                 {done && (
-                  <span className="small muted">
-                    Submitted{' '}
-                    {attempt.submitted_at
-                      ? new Date(attempt.submitted_at).toLocaleString()
-                      : ''}
-                  </span>
+                  <Link className="btn secondary" to={`/student/results/${attempt.id}`}>
+                    View result
+                  </Link>
                 )}
               </div>
             </section>

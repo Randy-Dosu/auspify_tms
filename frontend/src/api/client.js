@@ -134,3 +134,10 @@ export const attemptsApi = {
   answer: (id, body) => request(`/attempts/${id}/answer`, { method: 'PUT', body }),
   submit: (id) => request(`/attempts/${id}/submit`, { method: 'POST' }),
 }
+
+// ---------------------------------------------------------------------------
+// Step 3: results
+// ---------------------------------------------------------------------------
+export const resultsApi = {
+  get: (attemptId) => request(`/attempts/${attemptId}/result`),
+}

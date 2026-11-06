@@ -8,7 +8,7 @@ import TeacherExamsPage from './pages/teacher/TeacherExamsPage'
 import ExamEditorPage from './pages/teacher/ExamEditorPage'
 import StudentExamsPage from './pages/student/StudentExamsPage'
 import TakeExamPage from './pages/student/TakeExamPage'
-import SubmittedPage from './pages/student/SubmittedPage'
+import ResultPage from './pages/student/ResultPage'
 import { FullPageMessage } from './components/ui'
 
 /**
@@ -73,7 +73,7 @@ export default function App() {
           path="/student/results/:attemptId"
           element={
             <ProtectedRoute roles={['student']}>
-              <SubmittedPage />
+              <ResultPage />
             </ProtectedRoute>
           }
         />

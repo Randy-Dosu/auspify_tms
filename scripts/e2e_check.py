@@ -163,20 +163,20 @@ if started:
     check("no correct answers in the attempt payload", "is_correct" not in json.dumps(started))
     check("server reports remaining seconds", started["time"]["remaining_seconds"] > 0)
 
-    question_one = started["questions"][0]
-    right_option = None
-    # Option ids are opaque to the student; pick both and let a wrong one prove
-    # that the grader is not just echoing.
-    for option in question_one["options"]:
+    # The teacher knows the answer key; the student answers everything correctly
+    # so the expected score is the full mark total.
+    status, key = call("GET", f"/exams/{exam_id}", teacher_token)
+    key_by_question = {
+        q["id"]: [o["id"] for o in q["options"] if o.get("is_correct")] for q in key["exam"]["questions"]
+    }
+    for question in started["questions"]:
         status, saved = call(
             "PUT",
             f"/attempts/{attempt_id}/answer",
             student_token,
-            {"question_id": question_one["id"], "selected_option_ids": [option["id"]]},
+            {"question_id": question["id"], "selected_option_ids": key_by_question[question["id"]]},
         )
-        if status == 200:
-            right_option = option
-    check("answers autosave", status == 200, saved)
+        check(f"answer autosaved for question {question['id']}", status == 200, saved)
 
     status, submitted = call("POST", f"/attempts/{attempt_id}/submit", student_token)
     check("student submits", status == 200 and submitted["attempt"]["status"] == "submitted", submitted)
@@ -185,8 +185,24 @@ if started:
     status, again = call("POST", f"/attempts/{attempt_id}/submit", student_token)
     check("double submit is safe", status == 200)
 
+    # --- Step 3: result -----------------------------------------------------
+    status, result = call("GET", f"/attempts/{attempt_id}/result", student_token)
+    check("student can read their result", status == 200, result)
+    check("score equals the full marks (all answers correct)", result["result"]["score"] == result["exam"]["total_marks"], result["result"])
+    check("percentage is 100", result["result"]["percentage"] == 100.0, result["result"])
+    check("student passed", result["result"]["passed"] is True)
+    check(
+        "review stays hidden while the window is open",
+        result["review_available"] is False and "questions" not in result,
+        result.get("review_available"),
+    )
+
     status, forbidden = call("GET", f"/attempts/{attempt_id}", admin_token)
     check("another role cannot read the student's attempt (403)", status == 403, status)
+
+    status, teacher_result = call("GET", f"/attempts/{attempt_id}/result", teacher_token)
+    check("owning teacher can read the result", status == 200, teacher_result)
+    check("teacher sees the per-question review", "questions" in teacher_result)
 
 status, logout = call("POST", "/auth/logout", student_token)
 check("logout succeeds", status == 200, logout)

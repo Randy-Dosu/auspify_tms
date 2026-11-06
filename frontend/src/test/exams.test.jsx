@@ -155,6 +155,17 @@ describe('Step 2 — exam UI', () => {
         pattern: '^/attempts/7/submit$',
         data: () => ({ attempt: { id: 7, status: 'submitted' } }),
       },
+      {
+        method: 'GET',
+        pattern: '^/attempts/7/result$',
+        data: () => ({
+          attempt: { id: 7, status: 'submitted', submitted_at: '2026-11-06T19:10:00+00:00' },
+          exam: { id: 1, title: 'Algebra Basics', subject: 'Mathematics', total_marks: 4, pass_marks: 2, end_time: null },
+          result: { score: 4, percentage: 100, passed: true, status: 'submitted' },
+          review_available: false,
+          review_reason: 'Question review opens when the exam window closes.',
+        }),
+      },
     ])
 
     await userEvent.click(await screen.findByRole('button', { name: /start exam/i }))
@@ -179,7 +190,9 @@ describe('Step 2 — exam UI', () => {
     expect(await screen.findByRole('dialog', { name: /submit your exam/i })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /yes, submit/i }))
 
-    expect(await screen.findByRole('heading', { name: /exam submitted/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Algebra Basics' })).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
+    expect(screen.getByText('passed')).toBeInTheDocument()
     expect(calls.some((call) => call.method === 'POST' && call.path === '/attempts/7/submit')).toBe(true)
   })
 

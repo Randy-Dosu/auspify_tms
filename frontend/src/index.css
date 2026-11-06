@@ -733,3 +733,81 @@ code {
 .exam-card h2 {
   font-size: 1.15rem;
 }
+
+/* ---------------------------------------------------------------------------
+   Results (Step 3)
+   --------------------------------------------------------------------------- */
+.result-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.result-score {
+  font-size: 2.75rem;
+  font-weight: 800;
+  margin: 0.15rem 0 0;
+  line-height: 1;
+}
+
+.result-total {
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.result-stats {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.result-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.result-stats strong {
+  font-size: 1.15rem;
+}
+
+.review-item {
+  border-top: 1px solid var(--border);
+  padding: 1rem 0;
+}
+
+.review-item:first-of-type {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
+.marks-awarded {
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.option-list li.chosen {
+  font-weight: 600;
+}
+
+.option-list li.chosen:not(.correct) {
+  color: var(--danger);
+}
+
+.tag {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--success);
+}
+
+.tag.wrong {
+  color: var(--danger);
+}
