@@ -83,15 +83,42 @@ describe('Dashboards', () => {
     expect(screen.getByText('5')).toBeInTheDocument()
   })
 
-  it('shows a student’s open / in-progress / completed counts', async () => {
+  it('shows a student’s open / in-progress / completed counts and their average', async () => {
     renderApp('/dashboard', STUDENT, [
       { method: 'GET', pattern: '^/exams$', data: () => STUDENT_EXAMS },
+      {
+        method: 'GET',
+        pattern: '^/reports/student/3$',
+        data: () => ({
+          summary: { exams_taken: 2, average_percentage: 72.5, best_percentage: 90, pass_rate: 50 },
+          history: [],
+          trend: [],
+        }),
+      },
     ])
 
     expect(await screen.findByText('Hello, Kofi')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('Open now')).toBeInTheDocument())
     expect(screen.getByText('In progress')).toBeInTheDocument()
     expect(screen.getByText('Completed')).toBeInTheDocument()
+    // The average is read from the student's own report, not hardcoded.
+    expect(await screen.findByText('72.5%')).toBeInTheDocument()
+  })
+
+  it('falls back to an em dash when the student average cannot be loaded', async () => {
+    renderApp('/dashboard', STUDENT, [
+      {
+        method: 'GET',
+        pattern: '^/reports/student/3$',
+        data: () => ({ error: { code: 500, message: 'nope' } }),
+        status: 500,
+      },
+    ])
+
+    expect(await screen.findByText('Hello, Kofi')).toBeInTheDocument()
+    // The exam list also fails here; the dashboard still renders, with "—".
+    expect(await screen.findByText('Your average')).toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
   it('degrades to an alert when the exam list cannot be loaded', async () => {

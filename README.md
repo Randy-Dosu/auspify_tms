@@ -75,8 +75,10 @@ performance reports with CSV export.
 **Dashboards**
 
 - Role-aware home pages with live counters: students see open / in-progress /
-  completed exams; staff see exams, published, drafts and total attempts. A
-  failed load degrades to an inline message instead of an error screen.
+  completed exams plus their average percentage (read from their own student
+  report, "—" until they have a graded attempt); staff see exams, published,
+  drafts and total attempts. A failed load degrades to an inline message
+  instead of an error screen.
 
 **Reports**
 
@@ -149,12 +151,13 @@ performance reports with CSV export.
 │   │   │       ├── TakeExamPage.jsx       # countdown, autosave, submit confirm
 │   │   │       ├── ResultPage.jsx         # score + review when released
 │   │   │       └── ProgressPage.jsx       # own history + trend chart
-│   │   ├── test/                  # vitest + testing-library (28 tests, 6 files)
+│   │   ├── test/                  # vitest + testing-library (29 tests, 6 files)
 │   │   ├── App.jsx                # routes with role guards
 │   │   └── index.css              # design tokens and layout
 │   ├── vite.config.js             # dev server + /api proxy to Flask
 │   └── package.json
 ├── scripts/
+│   ├── dev.sh                     # one command: venv, .env, seed, API + UI
 │   ├── verify_step0.sh            # 30 checks — setup, headers, CORS, proxy, build
 │   ├── verify_step1.py            # 54 checks — authentication + RBAC
 │   ├── verify_step2.py            # 79 checks — exams, questions, attempts, timer
@@ -171,8 +174,17 @@ performance reports with CSV export.
 
 ## 3. Quick start
 
-Two terminals. The backend serves `http://localhost:5000`, the UI runs on
-`http://localhost:5173` and proxies `/api` to Flask.
+One command (recommended). It creates the virtualenv and `backend/.env` with
+freshly generated secrets, seeds the database on first run, installs the npm
+packages, then starts both servers — Ctrl-C stops both:
+
+```bash
+./scripts/dev.sh            # API :5000 + UI :5173
+./scripts/dev.sh --help     # options (e.g. --no-install)
+```
+
+Or run the two halves by hand. The backend serves `http://localhost:5000`, the
+UI runs on `http://localhost:5173` and proxies `/api` to Flask.
 
 ```bash
 # --- terminal 1: backend ---------------------------------------------------
@@ -227,6 +239,8 @@ python -c "import secrets; print('JWT_SECRET_KEY=' + secrets.token_hex(32))"
 | `MAX_FAILED_LOGINS` | no | `5` | Failures before lockout |
 | `LOCKOUT_MINUTES` | no | `15` | Lockout duration |
 | `LOGIN_RATE_LIMIT` | no | `10 per minute` | Flask-Limiter limit for `/api/auth/login` |
+| `REGISTER_RATE_LIMIT` | no | `20 per minute` | Flask-Limiter limit for `/api/auth/register` |
+| `RATELIMIT_ENABLED` | no | `1` | Set to `0` only in tests that deliberately hammer a route |
 | `RATELIMIT_STORAGE_URI` | no | `memory://` | Use Redis in production |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | no | — | Used by `seed.py` |
 | `SEED_TEACHER_EMAIL` / `SEED_TEACHER_PASSWORD` | no | — | Used by `seed.py` |
@@ -444,6 +458,12 @@ Full detail, findings and fixes: **[`backend/SECURITY_REPORT.md`](backend/SECURI
   (`Server: auspify-tms`), oversized integer ids are rejected before they reach
   SQLite, and CSV exports neutralise spreadsheet formula injection
   (`= + - @` are prefixed with `'`).
+- **Dependencies**: `requirements.txt` pins every backend package, and
+  `npm audit` reports no high-severity advisories — the react-router XSS/open
+  redirect advisories were fixed by the 6.30.x patch line. The two remaining
+  moderate react-router advisories only affect SSR hydration
+  (`deserializeErrors`), which this single-page client does not use; clearing
+  them needs the react-router v7 major (see §11).
 - **Known/accepted risks** (documented in the report): tokens live in
   `localStorage` (no httpOnly cookies yet), account lockout is observable, and
   development runs over plain HTTP.
@@ -465,7 +485,7 @@ Everything below was executed; the numbers are the actual results.
 | 5 | `cd backend && .venv/bin/python ../scripts/verify_step5.py` | `56 passed, 0 failed` |
 | e2e | `cd backend && .venv/bin/python ../scripts/e2e_check.py` | `43 passed, 0 failed` |
 | site | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | `61 passed, 0 failed` |
-| UI | `cd frontend && npx vitest run` | `28 passed (6 files)` |
+| UI | `cd frontend && npx vitest run` | `29 passed (6 files)` |
 | UI | `cd frontend && npx oxlint src && npm run build` | no findings, build OK |
 
 `verify_step0.sh`, `e2e_check.py` and `ui_smoke.py` need the running servers
@@ -522,6 +542,8 @@ reverse proxy.
   documented lockout-enumeration signal).
 - Audit log of privileged actions plus alerting on repeated 401/403.
 - `pip-audit` / `npm audit` and Dependabot in CI.
+- Upgrade react-router to v7 (major, requires a regression pass) to clear the
+  two remaining moderate SSR-hydration advisories reported by `npm audit`.
 
 **Exam integrity**
 
@@ -537,5 +559,8 @@ reverse proxy.
 - Docker Compose (API + UI + Postgres + Redis) for reproducible deployment.
 - Redis for rate-limit and blocklist storage so limits survive restarts.
 - Pagination and filtering for long exam/attempt lists.
+- Admin user-management screen: `POST /api/auth/users` already creates teacher
+  and admin accounts, but today only over the API — there is no UI for it, and
+  no endpoint yet to list or deactivate users.
 - i18n, accessibility audit (WCAG), and a dark theme.
 - CI pipeline: pytest, vitest, oxlint, build, and the `verify_step*.py` scripts.

@@ -11,7 +11,7 @@ by executing the code, not by inspection.
 | Black‑box attack script (56 checks) | `cd backend && .venv/bin/python ../scripts/verify_step5.py` | **56 passed, 0 failed** |
 | Functional regression | `scripts/verify_step0.sh` … `verify_step4.py`, `scripts/e2e_check.py` | 30 / 54 / 79 / 44 / 68 and 43 — all green |
 | Browser session (all pages, over the UI origin) | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | **61 passed, 0 failed** |
-| Frontend tests | `cd frontend && npx vitest run` | 28 passed (6 files) |
+| Frontend tests | `cd frontend && npx vitest run` | 29 passed (6 files) |
 | Static analysis | `npx oxlint src`, `npm run build` | 0 warnings / build OK |
 
 ---
@@ -177,7 +177,7 @@ attempts; the field is now `graded_count` and the CSV header reads
 | Medium | Email verification and password reset (single‑use, expiring tokens) | Prevents mistyped/foreign email registration, gives users a recovery path |
 | Medium | TOTP 2FA for admin/teacher accounts | Staff accounts can read the whole gradebook |
 | Medium | Audit log (who changed what, when) + alerting on repeated 401/403 | Detection, not just prevention |
-| Medium | `pip-audit` / `npm audit` in CI, dependency pinning review | Known‑CVE hygiene |
+| Medium | `pip-audit` / `npm audit` in CI, dependency pinning review | Known‑CVE hygiene. `npm audit` is clean of high‑severity advisories after the react‑router 6.30.x patch; the two remaining moderate ones are SSR‑hydration only and need the react‑router v7 major |
 | Low | Question and option randomisation, one‑question‑per‑page, focus‑loss tracking | Reduces collusion during an exam |
 | Low | Essay questions with manual grading (needs a rubric + review workflow) | Extends the exam model |
 | Low | Docker + Postgres + `waitress`/gunicorn, secrets from a vault | Production deployment story |

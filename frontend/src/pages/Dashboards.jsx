@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/context'
-import { examsApi } from '../api/client'
+import { examsApi, reportsApi } from '../api/client'
 import { Alert, Badge, PageHeader, Spinner } from '../components/ui'
 
 /**
@@ -72,10 +72,39 @@ function Stat({ label, value, hint }) {
   )
 }
 
+/**
+ * Loads the caller's own student report for the dashboard average.
+ * A failed call is deliberately silent: the dashboard shows "—" instead of an
+ * error banner, because the counter is a convenience, not the page's purpose.
+ */
+function useOwnAverage(userId) {
+  const [average, setAverage] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const report = await reportsApi.student(userId)
+        if (cancelled) return
+        const summary = report.summary || {}
+        setAverage(summary.exams_taken > 0 ? summary.average_percentage : null)
+      } catch {
+        if (!cancelled) setAverage(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
+  return average
+}
+
 /** Student home: what is open right now, plus a shortcut to progress. */
 export function StudentDashboard() {
   const { user } = useAuth()
   const { loading, exams, error } = useExamSummary()
+  const average = useOwnAverage(user.id)
 
   const open = exams.filter((exam) => exam.attempt?.status !== 'submitted' && exam.attempt?.status !== 'expired')
   const inProgress = exams.filter((exam) => exam.attempt?.status === 'in_progress')
@@ -101,7 +130,11 @@ export function StudentDashboard() {
           <Stat label="Open now" value={open.length} hint="exams you can start" />
           <Stat label="In progress" value={inProgress.length} hint="saved answers kept" />
           <Stat label="Completed" value={completed.length} hint="results available" />
-          <Stat label="Your average" value="—" hint="open My progress for details" />
+          <Stat
+            label="Your average"
+            value={average === null ? '—' : `${average}%`}
+            hint="across graded exams"
+          />
         </div>
       )}
 

@@ -152,9 +152,15 @@ def _status_page_html() -> str:
       <p>This port serves the JSON API, not the user interface.</p>
       <ul>
         <li><code>GET /api/health</code> &mdash; liveness check</li>
-        <li><code>/api/auth/*</code>, <code>/api/exams</code>, <code>/api/reports/*</code> &mdash; added in later steps</li>
+        <li><code>/api/auth/*</code> &mdash; register, login, logout, profile, admin user creation</li>
+        <li><code>/api/exams</code> &mdash; exam, question and option editing; student exam list</li>
+        <li><code>/api/attempts/*</code> &mdash; start, autosave answers, submit, graded result</li>
+        <li><code>/api/reports/*</code> &mdash; exam report, student report, leaderboard (+ <code>?format=csv</code>)</li>
       </ul>
-      <footer>The React UI runs on the frontend dev server (default port 5173).</footer>
+      <footer>
+        The React UI runs on the frontend dev server (default port 5173) and calls
+        this API through its <code>/api</code> proxy.
+      </footer>
     </main>
   </body>
 </html>"""
