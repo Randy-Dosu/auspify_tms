@@ -25,7 +25,9 @@ B=$(curl -s -D - -o /dev/null -H 'Origin: http://evil.example.com' http://127.0.
 check "A8 disallowed origin gets no CORS header" "$B" "0"
 
 check "A9 API index at / returns 200 (preview page)" "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/)" "200"
-curl -s http://127.0.0.1:5000/ | grep -q '"service": "auspify-tms-api"' && ok "A10 API index describes the service, no config dump" || bad "A10 API index body"
+# Whitespace-insensitive: Flask only pretty-prints JSON while debug mode is on,
+# and Step 5 deliberately turns debug off.
+curl -s http://127.0.0.1:5000/ | tr -d ' \n' | grep -q '"service":"auspify-tms-api"' && ok "A10 API index describes the service, no config dump" || bad "A10 API index body"
 
 curl -s -D /tmp/page.txt -o /tmp/page.html -H 'Accept: text/html,application/xhtml+xml,*/*;q=0.8' http://127.0.0.1:5000/ >/dev/null
 grep -q '<title>Auspify TMS API</title>' /tmp/page.html && ok "A11 browser gets the HTML status page on :5000" || bad "A11 browser status page"

@@ -11,6 +11,7 @@ from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 from marshmallow import ValidationError
 from werkzeug.exceptions import HTTPException
+from werkzeug.routing import IntegerConverter
 
 from .config import Config
 from .db import init_app as init_db_app
@@ -23,7 +24,9 @@ def create_app(config_class=Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    _guard_production_config(app)
     _ensure_instance_dir(app)
+    _register_url_converters(app)
     _configure_logging(app)
     _configure_cors(app)
     _register_root_route(app)
@@ -37,6 +40,39 @@ def create_app(config_class=Config) -> Flask:
     init_db_app(app)
 
     return app
+
+
+def _guard_production_config(app: Flask) -> None:
+    """Refuse to start a production profile that leaks internals.
+
+    Debug mode returns Werkzeug tracebacks to the caller and enables the
+    interactive debugger; the Flask test client would also change behaviour.
+    Production must therefore run with APP_DEBUG=0 and without TESTING.
+    """
+
+    if app.config.get("ENV_NAME") != "production":
+        return
+    if app.config.get("DEBUG"):
+        raise RuntimeError("APP_DEBUG must be 0 when APP_ENV=production.")
+    if app.config.get("TESTING"):
+        raise RuntimeError("TESTING must be off when APP_ENV=production.")
+
+
+def _register_url_converters(app: Flask) -> None:
+    """Bound every ``<int:...>`` URL variable so absurd ids cannot 500.
+
+    SQLite cannot bind integers wider than 64 bits, so a request such as
+    ``GET /api/exams/999999999999999999999`` used to raise inside the driver and
+    surface as a 500.  Capping the converter turns those ids into ordinary 404s
+    before any database code runs.
+    """
+
+    class BoundedIntConverter(IntegerConverter):
+        def __init__(self, map, min=0, max=2**63 - 1):  # noqa: A002 - werkzeug's names
+            super().__init__(map, min=min, max=max)
+
+    # Replaces the built-in converter for every route registered afterwards.
+    app.url_map.converters["int"] = BoundedIntConverter
 
 
 def _ensure_instance_dir(app: Flask) -> None:

@@ -47,6 +47,10 @@ def _exam_access(exam, user):
 @jwt_required_json
 def exam_report_endpoint(exam_id):
     user = current_user()
+    # Deny students before touching the database so that a rejected role never
+    # reveals whether a given exam id exists.
+    if user["role"] == "student":
+        return error(403, "Students cannot view exam-wide reports.")
     exam = fetch_exam(exam_id)
     if exam is None:
         return error(404, "Exam not found.")
@@ -133,6 +137,9 @@ def leaderboard_endpoint(exam_id):
     user = current_user()
     exam = fetch_exam(exam_id)
     if exam is None:
+        # Students get the same message whether or not the exam exists.
+        if user["role"] == "student":
+            return error(403, "You cannot view this leaderboard.")
         return error(404, "Exam not found.")
 
     if user["role"] == "admin":
