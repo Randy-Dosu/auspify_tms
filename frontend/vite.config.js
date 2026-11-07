@@ -20,6 +20,20 @@ export default defineConfig({
       },
     },
   },
+  // `npm run preview` serves the production build with the same /api proxy, so
+  // the built bundle can be exercised exactly like the dev server.
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    strictPort: true,
+    allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000',
+        changeOrigin: true,
+      },
+    },
+  },
   // UI tests run in jsdom (no browser needed).
   test: {
     environment: 'jsdom',

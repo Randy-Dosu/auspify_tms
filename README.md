@@ -54,9 +54,12 @@ performance reports with CSV export.
 
 - Visible exams only: published, inside their window, not yet attempted (or
   retakes allowed).
-- Countdown supplied by the server (`remaining_seconds`) and re-checked on every
-  write; answers autosave, the page warns before leaving, and the attempt
-  auto-submits (graded as `expired`) when time runs out.
+- Countdown supplied by the server (`remaining_seconds`), rendered from an
+  absolute deadline and re-synced from the server whenever the tab regains
+  focus; every write is re-checked server-side, so editing the browser clock or
+  sleeping the laptop cannot extend the exam.
+- Answers autosave, leaving/reloading the page mid-attempt warns first, and the
+  attempt auto-submits (graded as `expired`) when time runs out.
 - The answer key never leaves the server until the exam window closes.
 
 **Grading and results**
@@ -68,6 +71,12 @@ performance reports with CSV export.
   `score ≥ pass_marks`.
 - Per-question review (what you picked vs. the correct option) is withheld until
   the exam window closes.
+
+**Dashboards**
+
+- Role-aware home pages with live counters: students see open / in-progress /
+  completed exams; staff see exams, published, drafts and total attempts. A
+  failed load degrades to an inline message instead of an error screen.
 
 **Reports**
 
@@ -140,7 +149,7 @@ performance reports with CSV export.
 │   │   │       ├── TakeExamPage.jsx       # countdown, autosave, submit confirm
 │   │   │       ├── ResultPage.jsx         # score + review when released
 │   │   │       └── ProgressPage.jsx       # own history + trend chart
-│   │   ├── test/                  # vitest + testing-library (18 tests, 4 files)
+│   │   ├── test/                  # vitest + testing-library (28 tests, 6 files)
 │   │   ├── App.jsx                # routes with role guards
 │   │   └── index.css              # design tokens and layout
 │   ├── vite.config.js             # dev server + /api proxy to Flask
@@ -152,6 +161,7 @@ performance reports with CSV export.
 │   ├── verify_step3.py            # 44 checks — grading + result access
 │   ├── verify_step4.py            # 68 checks — reports + CSV hardening
 │   ├── verify_step5.py            # 56 checks — live security attacks
+│   ├── ui_smoke.py                # 61 checks — every page, over the UI origin
 │   └── e2e_check.py               # 43 checks — full walkthrough over real HTTP
 ├── .gitignore                     # .env, instance/, node_modules, dist, …
 └── README.md
@@ -454,12 +464,31 @@ Everything below was executed; the numbers are the actual results.
 | 5 | `cd backend && .venv/bin/python -m pytest` | `149 passed` |
 | 5 | `cd backend && .venv/bin/python ../scripts/verify_step5.py` | `56 passed, 0 failed` |
 | e2e | `cd backend && .venv/bin/python ../scripts/e2e_check.py` | `43 passed, 0 failed` |
-| UI | `cd frontend && npx vitest run` | `18 passed (4 files)` |
+| site | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | `61 passed, 0 failed` |
+| UI | `cd frontend && npx vitest run` | `28 passed (6 files)` |
 | UI | `cd frontend && npx oxlint src && npm run build` | no findings, build OK |
 
-`verify_step0.sh` and `e2e_check.py` need the backend on port 5000 (and the
-frontend on 5173 for the Step 0 checks). The pytest suite and the other
-`verify_stepN.py` scripts start their own data and only need the venv.
+`verify_step0.sh`, `e2e_check.py` and `ui_smoke.py` need the running servers
+(backend on 5000, frontend on 5173). The pytest suite and the other
+`verify_stepN.py` scripts create their own data and only need the venv.
+
+**`ui_smoke.py` is the browser stand-in:** it walks every page over the same
+origin the browser uses (the Vite dev server, whose `/api` proxy reaches Flask),
+asserts the app shell, static assets, deep-link fallbacks and the exact JSON
+fields each React page renders, then drives the whole journey — register →
+teacher creates/publishes an exam → student starts/answers/submits → result →
+progress → teacher report/leaderboard/CSV — and finally unpublishes its own
+smoke exam. It is idempotent and safe to re-run.
+
+Checking the **production build** end to end:
+
+```bash
+cd frontend && npm run build && npm run preview   # http://localhost:4173
+```
+
+`vite.config.js` gives the preview server the same `/api` proxy as the dev
+server, so the built bundle can be exercised (SPA deep links included) without a
+reverse proxy.
 
 ---
 
@@ -474,6 +503,8 @@ frontend on 5173 for the Step 0 checks). The pytest suite and the other
 | Empty charts / blank report page | The exam has no submitted attempts yet; reports only count `submitted`/`expired` attempts |
 | `PRAGMA foreign_keys` warnings on delete | Delete through the API (cascades are declared), not manually in SQL |
 | pytest is slow (~6 min) | Intentional: bcrypt hashing of seeded accounts dominates. Use `pytest tests/test_validation.py` while iterating |
+| `npm run preview` shows a blank page | Rebuild (`npm run build`) and make sure the API is running; the preview server serves `dist/` and proxies `/api` to port 5000 |
+| `ui_smoke.py` reports `login rate limited, waiting 62s` | Expected if it runs right after other login-heavy scripts: the login limiter allows 10 requests a minute per IP and the script waits it out |
 
 ---
 

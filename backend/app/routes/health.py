@@ -11,7 +11,7 @@ from flask import Blueprint, current_app, jsonify
 bp = Blueprint("health", __name__)
 
 # Bumped per step so the frontend can display what is deployed.
-API_VERSION = "0.1.0 (step 0)"
+API_VERSION = "1.0.0"
 
 
 @bp.get("/health")

@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 /** Small shared UI primitives used across pages. */
 
 export function Alert({ tone = 'error', children }) {
@@ -18,9 +20,11 @@ export function FullPageMessage({ title, body, tone, linkTo, linkLabel }) {
         {body && <p className="muted">{body}</p>}
         {linkTo && (
           <p>
-            <a className="btn" href={linkTo}>
+            {/* Link, not <a>: a plain anchor would reload the whole app and
+                drop the in-memory session state. */}
+            <Link className="btn" to={linkTo}>
               {linkLabel || 'Continue'}
-            </a>
+            </Link>
           </p>
         )}
       </section>

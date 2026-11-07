@@ -10,7 +10,8 @@ by executing the code, not by inspection.
 | White‑box suite (149 tests) | `cd backend && .venv/bin/python -m pytest` | **149 passed, 0 failed** (`backend/tests/pytest_report.txt`) |
 | Black‑box attack script (56 checks) | `cd backend && .venv/bin/python ../scripts/verify_step5.py` | **56 passed, 0 failed** |
 | Functional regression | `scripts/verify_step0.sh` … `verify_step4.py`, `scripts/e2e_check.py` | 30 / 54 / 79 / 44 / 68 and 43 — all green |
-| Frontend tests | `cd frontend && npx vitest run` | 18 passed (4 files) |
+| Browser session (all pages, over the UI origin) | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | **61 passed, 0 failed** |
+| Frontend tests | `cd frontend && npx vitest run` | 28 passed (6 files) |
 | Static analysis | `npx oxlint src`, `npm run build` | 0 warnings / build OK |
 
 ---

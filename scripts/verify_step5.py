@@ -74,8 +74,28 @@ def _parse(text):
         return {"raw": text}
 
 
-def login(email, password):
-    return call("POST", "/auth/login", body={"email": email, "password": password})
+def login(email, password, retries=2):
+    """Log in, waiting out the per-IP login rate limiter (10/min) if needed.
+
+    Sections [1]-[5] together exceed the default budget, so a 429 here is a
+    harness artefact, not a finding: wait for the rolling window and retry.
+    """
+    status, payload, headers = call("POST", "/auth/login", body={"email": email, "password": password})
+    attempts = 0
+    # Two different 429s: the per-IP limiter ("10 per 1 minute") is a harness
+    # artefact and worth waiting out; the account lockout ("Too many failed
+    # attempts") is a finding and must be reported as-is.
+    while status == 429 and attempts < retries and _is_rate_limit(payload):
+        attempts += 1
+        print("  ...  login rate limited, waiting 62s for the window to clear")
+        time.sleep(62)
+        status, payload, headers = call("POST", "/auth/login", body={"email": email, "password": password})
+    return status, payload, headers
+
+
+def _is_rate_limit(payload) -> bool:
+    message = str((payload or {}).get("error", {}).get("message", "")).lower()
+    return "per 1 minute" in message or "per minute" in message
 
 
 def sqlite_state(email):
@@ -139,7 +159,10 @@ check("admin can log in", status == 200 and "access_token" in (admin_login or {}
 admin_token = (admin_login or {}).get("access_token", "")
 
 segments = admin_token.split(".")
-forged_none = f"{segments[0]}.{segments[1]}." if len(segments) == 3 else "a.b."
+if len(segments) != 3:
+    print("  ABORT: admin login did not return a JWT (rate limited?)")
+    sys.exit(1)
+forged_none = f"{segments[0]}.{segments[1]}."
 status, payload, _ = call("GET", "/auth/me", token=forged_none)
 check("unsigned (alg=none) token rejected", status == 401, f"{status} {payload}")
 
@@ -169,8 +192,14 @@ def b64url_encode(raw):
 
 status, student_login, _ = login(ENV["SEED_STUDENT1_EMAIL"], ENV["SEED_STUDENT_PASSWORD"])
 student_token = (student_login or {}).get("access_token", "")
+if not student_token:
+    print("  ABORT: student login failed:", student_login)
+    sys.exit(1)
 status, other_login, _ = login(ENV["SEED_STUDENT2_EMAIL"], ENV["SEED_STUDENT_PASSWORD"])
 other_token = (other_login or {}).get("access_token", "")
+if not other_token:
+    print("  ABORT: second student login failed:", other_login)
+    sys.exit(1)
 check("second student can log in (for the horizontal-access probe)", bool(other_token), str(status))
 privilege_payload = json.loads(b64url_decode(student_token.split(".")[1]))
 privilege_payload["role"] = "admin"
@@ -332,7 +361,11 @@ print("\n[12] Login rate limiting (deliberately trips the limiter - last check)"
 hit = None
 codes = []
 for _ in range(20):
-    status, payload, headers = login(unknown_email, "WrongPass123")
+    # Deliberately NOT using the retrying wrapper: this section needs the raw
+    # 429 to prove the limiter is active.
+    status, payload, headers = call(
+        "POST", "/auth/login", body={"email": unknown_email, "password": "WrongPass123"}
+    )
     codes.append(status)
     if status == 429:
         hit = (payload, headers)

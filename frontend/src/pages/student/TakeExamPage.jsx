@@ -25,6 +25,10 @@ export default function TakeExamPage() {
   const [state, setState] = useState({ status: 'loading', data: null, error: '' })
   const [answers, setAnswers] = useState({})
   const [remaining, setRemaining] = useState(0)
+  // Absolute deadline in ms, derived from the server's remaining_seconds. The
+  // countdown renders from this instead of decrementing blindly, so a sleeping
+  // tab or a slow timer cannot drift the display away from the server.
+  const [deadline, setDeadline] = useState(0)
   const [saveState, setSaveState] = useState({ questionId: null, status: 'idle' })
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -42,6 +46,7 @@ export default function TakeExamPage() {
       setState({ status: 'ready', data, error: '' })
       setAnswers(data.answers || {})
       setRemaining(data.time.remaining_seconds)
+      setDeadline(Date.now() + data.time.remaining_seconds * 1000)
     } catch (err) {
       setState({ status: 'error', data: null, error: err.message })
     }
@@ -71,20 +76,48 @@ export default function TakeExamPage() {
   )
 
   useEffect(() => {
-    if (state.status !== 'ready') return undefined
-    const interval = setInterval(() => {
-      setRemaining((current) => {
-        if (current <= 1) {
-          clearInterval(interval)
-          // Time is up: submit automatically (the server would reject more answers).
-          submit(true)
-          return 0
-        }
-        return current - 1
-      })
-    }, 1000)
+    if (state.status !== 'ready' || !deadline) return undefined
+    const tick = () => {
+      const left = Math.max(0, Math.round((deadline - Date.now()) / 1000))
+      setRemaining(left)
+      // Time is up: submit automatically (the server would reject more answers).
+      if (left === 0) submit(true)
+    }
+    tick()
+    const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [state.status, submit])
+  }, [state.status, deadline, submit])
+
+  // --- Resync with the server --------------------------------------------
+  // Coming back from a sleeping laptop or a background tab can leave the local
+  // countdown stale; re-read the attempt so the timer matches the server (and
+  // land on the result page if the attempt closed while away).
+  useEffect(() => {
+    if (state.status !== 'ready') return undefined
+    const resync = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', resync)
+    window.addEventListener('focus', resync)
+    return () => {
+      document.removeEventListener('visibilitychange', resync)
+      window.removeEventListener('focus', resync)
+    }
+  }, [state.status, load])
+
+  // --- Leave-page guard ---------------------------------------------------
+  // A reload or closed tab would drop unsent answers, so warn while an attempt
+  // is open. (In-app navigation still works; answers are already autosaved.)
+  useEffect(() => {
+    if (state.status !== 'ready') return undefined
+    const warn = (event) => {
+      event.preventDefault()
+      event.returnValue = ''
+      return ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [state.status])
 
   // --- Answering ----------------------------------------------------------
   async function choose(question, optionId) {
