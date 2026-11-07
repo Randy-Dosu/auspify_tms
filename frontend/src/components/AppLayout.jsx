@@ -18,6 +18,7 @@ export default function AppLayout() {
           </NavLink>
           {(user.role === 'teacher' || user.role === 'admin') && <NavLink to="/teacher">Exams</NavLink>}
           {user.role === 'student' && <NavLink to="/student">My exams</NavLink>}
+          {user.role === 'student' && <NavLink to="/student/progress">My progress</NavLink>}
         </nav>
 
         <div className="app-user">

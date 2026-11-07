@@ -11,3 +11,15 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
 })
+
+// jsdom lacks these browser APIs that chart libraries probe for.
+if (!global.ResizeObserver) {
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+if (!window.matchMedia) {
+  window.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} })
+}

@@ -141,3 +141,34 @@ export const attemptsApi = {
 export const resultsApi = {
   get: (attemptId) => request(`/attempts/${attemptId}/result`),
 }
+
+// ---------------------------------------------------------------------------
+// Step 4: reports
+// ---------------------------------------------------------------------------
+export const reportsApi = {
+  exam: (examId) => request(`/reports/exam/${examId}`),
+  student: (studentId) => request(`/reports/student/${studentId}`),
+  leaderboard: (examId) => request(`/reports/leaderboard/${examId}`),
+}
+
+/**
+ * Download a CSV export.
+ * A plain <a href> cannot carry the bearer token, so the file is fetched with
+ * the Authorization header and handed to the browser as a blob.
+ */
+export async function downloadCsv(path, filename) {
+  const token = tokenStore.get()
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!response.ok) throw new ApiError('Export failed.', response.status)
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}

@@ -107,6 +107,9 @@ export default function TeacherExamsPage() {
                     <Link className="btn secondary small-btn" to={`/teacher/exams/${exam.id}`}>
                       Edit
                     </Link>
+                    <Link className="btn secondary small-btn" to={`/teacher/reports/${exam.id}`}>
+                      Report
+                    </Link>
                     <button
                       type="button"
                       className="btn danger small-btn"

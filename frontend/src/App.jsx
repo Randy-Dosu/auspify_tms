@@ -9,6 +9,9 @@ import ExamEditorPage from './pages/teacher/ExamEditorPage'
 import StudentExamsPage from './pages/student/StudentExamsPage'
 import TakeExamPage from './pages/student/TakeExamPage'
 import ResultPage from './pages/student/ResultPage'
+import ProgressPage from './pages/student/ProgressPage'
+import ExamReportPage from './pages/teacher/ExamReportPage'
+import StudentReportPage from './pages/teacher/StudentReportPage'
 import { FullPageMessage } from './components/ui'
 
 /**
@@ -52,6 +55,23 @@ export default function App() {
           }
         />
 
+        <Route
+          path="/teacher/reports/:examId"
+          element={
+            <ProtectedRoute roles={['teacher', 'admin']}>
+              <ExamReportPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/students/:studentId"
+          element={
+            <ProtectedRoute roles={['teacher', 'admin']}>
+              <StudentReportPage />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Student */}
         <Route
           path="/student"
@@ -74,6 +94,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['student']}>
               <ResultPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/progress"
+          element={
+            <ProtectedRoute roles={['student']}>
+              <ProgressPage />
             </ProtectedRoute>
           }
         />

@@ -51,7 +51,12 @@ def call(method, path, token=None, body=None):
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             raw = response.read().decode()
-            return response.status, json.loads(raw) if raw else None
+            if not raw:
+                return response.status, None
+            try:
+                return response.status, json.loads(raw)
+            except ValueError:
+                return response.status, raw  # CSV or other non-JSON body
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode()
         try:
@@ -203,6 +208,38 @@ if started:
     status, teacher_result = call("GET", f"/attempts/{attempt_id}/result", teacher_token)
     check("owning teacher can read the result", status == 200, teacher_result)
     check("teacher sees the per-question review", "questions" in teacher_result)
+
+# --- Step 4: reports -----------------------------------------------------
+status, teacher_exam_report = call("GET", f"/reports/exam/{exam_id}", teacher_token)
+check("teacher reads the exam report", status == 200, teacher_exam_report)
+check("report counts the graded attempt", teacher_exam_report["summary"]["attempt_count"] >= 1, teacher_exam_report["summary"])
+check(
+    "report average is a percentage between 0 and 100",
+    0 <= teacher_exam_report["summary"]["average_percentage"] <= 100,
+    teacher_exam_report["summary"],
+)
+check("report has five distribution bands", len(teacher_exam_report["distribution"]) == 5)
+check("per-question difficulty is present", len(teacher_exam_report["questions"]) == 2)
+
+status, _ = call("GET", f"/reports/exam/{exam_id}", student_token)
+check("student cannot read the exam-wide report (403)", status == 403, status)
+
+status, board = call("GET", f"/reports/leaderboard/{exam_id}", teacher_token)
+check("teacher reads the leaderboard", status == 200 and len(board["entries"]) >= 1, board)
+
+status, own_report = call("GET", f"/reports/student/{student['id']}", student_token)
+check("student reads their own report", status == 200 and own_report["summary"]["exams_taken"] >= 1, own_report)
+check("student report includes history", len(own_report["history"]) >= 1)
+status, _ = call("GET", f"/reports/student/{teacher['id']}", student_token)
+check("student cannot read another user's report (404)", status == 404, status)
+
+status, admin_report = call("GET", f"/reports/student/{student['id']}", admin_token)
+check("admin reads any student report", status == 200, status)
+
+csv_status, csv_body = call("GET", f"/reports/exam/{exam_id}?format=csv", teacher_token)
+check("exam report exports as CSV", csv_status == 200, csv_status)
+check("CSV body starts with a header row", isinstance(csv_body, str) and csv_body.splitlines()[0].startswith("Section"), str(csv_body)[:60])
+check("CSV contains the metric rows", "average_percentage" in str(csv_body))
 
 status, logout = call("POST", "/auth/logout", student_token)
 check("logout succeeds", status == 200, logout)
