@@ -218,3 +218,40 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Project-specific (Online Examination System)
+# ---------------------------------------------------------------------------
+# Secrets: only .env.example is committed
+.env
+.env.local
+backend/.env
+frontend/.env
+.env.*
+!.env.example
+
+# Python virtual environment & caches
+backend/.venv/
+.venv/
+__pycache__/
+.pytest_cache/
+
+# SQLite database files (created at runtime, never committed)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+backend/instance/
+
+# Node / Vite build output
+frontend/node_modules/
+frontend/dist/
+frontend/preview-dist/
+frontend/.vite/
+
+# Local logs & coverage
+*.log
+htmlcov/
+.coverage
