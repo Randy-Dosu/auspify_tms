@@ -28,7 +28,7 @@
   - New `scripts/ui_smoke.py` (61 checks): loads the app shell and assets from the UI origin, asserts SPA deep-link fallbacks, then walks every page's real requests (register → teacher creates/publishes an exam → student starts/answers/submits → result → progress → exam report / leaderboard / student report / CSV) and checks the exact JSON fields each component renders.
   - New `frontend/src/test/{dashboard,exam-timer}.test.jsx` (10 tests): dashboard counters, graceful failure, 404/403 screens with client-side navigation, mm:ss countdown from the server value, `beforeunload` guard, and re-sync when the tab regains focus.
   - Bugs fixed: `FullPageMessage` used a raw `<a href>` (full page reload → lost session state, now a router `<Link>`); dashboards still advertised "arrives in Step 2/3/4" placeholder copy (now live counters and links); the exam countdown decremented a local number instead of an absolute deadline and never re-synced after a sleeping tab (now deadline-based + `visibilitychange`/`focus` re-sync); the README promised a leave-page warning that did not exist (now implemented); `vite.config.js` had no `preview` block, so `npm run preview` could not reach the API (now proxied on 4173); `api/health` still reported `0.1.0 (step 0)` (now `1.0.0`); harness fixes in `verify_step5.py` (429 retry that distinguishes the IP limiter from a real account lockout).
-  - Verified: `ui_smoke.py` 61/61, vitest 28/28 (6 files), oxlint 0/0, `npm run build` OK, production preview (`vite preview` on :4173) serves the bundle + deep links + `/api` proxy, and step0 30 / step1 54 / step2 79 / step3 44 / step4 68 / e2e 43 / verify_step5 56 all still green.
+  - Verified: `ui_smoke.py` 62/62, vitest 46/46 (8 files), oxlint 0/0, `npm run build` OK, production preview (`vite preview` on :4173) serves the bundle + deep links + `/api` proxy, and step0 30 / step1 54 / step2 79 / step3 44 / step4 68 / e2e 43 / verify_step5 56 all still green.
 
 - Step 5 (ops repair): resumed the production preview on port 4173
   - Inspected the running processes: Flask (:5000) and the Vite dev server (:5173) were healthy, but 4173 was an orphaned `vite preview` no longer tracked, and the Flask process was serving stale code (`/api/health` still reported `0.1.0 (step 0)` because `use_reloader=False`).
@@ -36,3 +36,43 @@
   - Root cause of the recurring 404s: the preview's document root was `frontend/dist`, and hosted sandboxes wipe folders named `dist`/`build`/`out` between snapshots. `vite.config.js` now takes `VITE_OUT_DIR` (default `dist`) and `package.json` gained `preview:build` / `preview:serve` (`--outDir preview-dist`), which is git-ignored and survives snapshots.
   - `scripts/ui_smoke.py` is now build-aware: it reads the entry `<script src>` from the shell, so the same 62 checks pass against the dev server (`/src/main.jsx`) and the built app (`/assets/index-*.js`), via `SITE_BASE`.
   - Verified: `SITE_BASE=http://127.0.0.1:4173` ui_smoke 62/62, dev ui_smoke 62/62, e2e 43/43, step0 30/30, preview shell/assets/deep-links/API all 200.
+
+---
+
+## Step 6 — minimal UI and UX pass
+
+- **A single design system.** `frontend/src/index.css` was rebuilt from the
+  ground up around one `:root` block: 25 role-based colour tokens, an 8-step
+  type scale, 6 spacing steps, 2 radii and exactly one shadow (the modal).
+  Borders replace card shadows; one accent marks the primary action, the active
+  nav item and selection. No ad-hoc hex value, font size or radius survives
+  outside the token block.
+- **Measured contrast.** `scripts/ux_check.py` recomputes every text pair from
+  the token values: body 16.1, secondary 7.6, accent 6.7, error 6.6, success
+  5.0 — all ≥ 4.5 : 1. Control borders were the one failure (`#c3c9d2`,
+  1.67 : 1) and became `--border-strong: #868f9d` at **3.27 : 1** for WCAG
+  1.4.11.
+- **Accessibility fixes.** `components/Modal.jsx` now really traps focus (Tab
+  and Shift+Tab wrap, Escape closes, focus returns to the opener, the dialog is
+  labelled by its title) — the previous comment claimed this but no code
+  implemented it. Added `src/test/a11y.test.jsx`: `axe-core` on 12 screens,
+  scoped to the RTL container and guarded by a meta-test that proves the audit
+  still catches `image-alt` / `button-name`. Result: 0 violations of any
+  severity.
+- **Dependency health.** `react-router-dom` 6 → 7.18.5 cleared three high
+  advisories (open redirect / XSS in `@remix-run/router`); `npm audit` is now
+  clean. `axe-core` 4.10.2 added as a dev dependency.
+- **`scripts/ux_check.py`** (new, 56 checks): token discipline, WCAG contrast
+  maths, class coverage (84/84 styled), keyboard/touch targets, component
+  semantics, and per-page loading/empty/error/forbidden states. It exits
+  non-zero on any failure so it can gate CI.
+- **`scripts/ui_smoke.py`** now accepts Vite's HMR cache-buster (`?t=…`) on the
+  dev entry script, so the same 62 checks run against dev and production.
+- **`frontend/UX_REVIEW.md`** (new): what was audited, the seven findings with
+  severity and fix, and the remaining recommendations (skip link, `aria-busy`,
+  dark mode, table virtualisation, chart keyboard access).
+- Verified: vitest **46/46** (8 files), axe **0 violations × 12 screens**,
+  `ux_check.py` **56/56**, `npm run build` OK, oxlint 0/0, `npm audit` 0,
+  `ui_smoke.py` **62/62** on dev and on the rebuilt production preview
+  (`npm run preview:build`), step0 30, step1 54, step2 79, step3 44, step4 68,
+  e2e 43, step5 56, pytest 149 all still green.

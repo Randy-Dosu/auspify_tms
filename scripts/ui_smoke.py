@@ -117,7 +117,8 @@ check("shell has the product title", "Auspify TMS" in html, html[:200])
 # shell actually points at - that is the file the browser would load.
 # dev serves /src/main.jsx (Vite also injects an inline refresh preamble);
 # the production build references /assets/index-<hash>.js
-entry = re.search(r'<script[^>]+src="([^"]+\.(?:m?js|jsx))"', html)
+# Vite may append an HMR cache-buster (?t=...) to the dev entry.
+entry = re.search(r'<script[^>]+src="([^"]+\.(?:m?js|jsx))(?:\?[^"]*)?"', html)
 check("shell references a JavaScript entry point", entry is not None, html[:200])
 if entry:
     entry_path = entry.group(1)

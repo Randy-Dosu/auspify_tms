@@ -22,7 +22,8 @@ performance reports with CSV export.
 8. [Security](#8-security)
 9. [Verification](#9-verification)
 10. [Troubleshooting](#10-troubleshooting)
-11. [Suggested improvements](#11-suggested-improvements)
+11. [UI design system and UX review](#11-ui-design-system-and-ux-review)
+12. [Suggested improvements](#12-suggested-improvements)
 
 ---
 
@@ -77,6 +78,23 @@ performance reports with CSV export.
 - Role-aware home pages with live counters: students see open / in-progress /
   completed exams; staff see exams, published, drafts and total attempts. A
   failed load degrades to an inline message instead of an error screen.
+
+**Interface**
+
+- One minimal design system: 25 role-based colour tokens, an 8-step type scale,
+  6 spacing steps, 2 radii and a single shadow (overlays only). Cards and tables
+  are separated by hairlines instead of shadows, and one accent colour marks the
+  primary action, active navigation and selection.
+- Every interactive border meets the 3 : 1 non-text contrast rule and every text
+  pair meets WCAG AA; pass/fail never relies on colour alone.
+- Keyboard first: a single `:focus-visible` ring, 40 px targets (44 px on touch
+  and for answer options), a trapped focus dialog that returns focus to its
+  opener, `aria-live` on the exam countdown and a `prefers-reduced-motion`
+  fallback.
+- Each page has loading, empty, error and forbidden states.
+- Verified by `axe-core` on all 12 screens, a static UX audit
+  (`scripts/ux_check.py`) and the live walk in `ui_smoke.py` — see
+  [frontend/UX_REVIEW.md](frontend/UX_REVIEW.md).
 
 **Reports**
 
@@ -149,9 +167,10 @@ performance reports with CSV export.
 │   │   │       ├── TakeExamPage.jsx       # countdown, autosave, submit confirm
 │   │   │       ├── ResultPage.jsx         # score + review when released
 │   │   │       └── ProgressPage.jsx       # own history + trend chart
-│   │   ├── test/                  # vitest + testing-library (28 tests, 6 files)
+│   │   ├── test/                  # vitest + testing-library + axe (46 tests, 8 files)
 │   │   ├── App.jsx                # routes with role guards
-│   │   └── index.css              # design tokens and layout
+│   │   └── index.css              # the whole design system (tokens + components)
+│   ├── UX_REVIEW.md               # UX findings, severity, fixes, remaining work
 │   ├── vite.config.js             # dev/preview servers + /api proxy, outDir
 │   └── package.json
 ├── scripts/
@@ -161,7 +180,8 @@ performance reports with CSV export.
 │   ├── verify_step3.py            # 44 checks — grading + result access
 │   ├── verify_step4.py            # 68 checks — reports + CSV hardening
 │   ├── verify_step5.py            # 56 checks — live security attacks
-│   ├── ui_smoke.py                # 61 checks — every page, over the UI origin
+│   ├── ui_smoke.py                # 62 checks — every page, over the UI origin
+│   ├── ux_check.py                # 56 checks — design tokens, contrast, a11y, UX states
 │   └── e2e_check.py               # 43 checks — full walkthrough over real HTTP
 ├── .gitignore                     # .env, instance/, node_modules, dist, …
 └── README.md
@@ -466,8 +486,11 @@ Everything below was executed; the numbers are the actual results.
 | e2e | `cd backend && .venv/bin/python ../scripts/e2e_check.py` | `43 passed, 0 failed` |
 | site | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | `62 passed, 0 failed` |
 | site (build) | `SITE_BASE=http://127.0.0.1:4173 .venv/bin/python ../scripts/ui_smoke.py` | `62 passed, 0 failed` |
-| UI | `cd frontend && npx vitest run` | `28 passed (6 files)` |
+| UI | `cd frontend && npx vitest run` | `46 passed (8 files)` |
+| UI a11y | `cd frontend && npx vitest run src/test/a11y.test.jsx` | `13 passed`, 0 axe violations on 12 screens |
+| UX | `cd frontend && python3 ../scripts/ux_check.py` | `56 passed, 0 failed` |
 | UI | `cd frontend && npx oxlint src && npm run build` | no findings, build OK |
+| deps | `cd frontend && npm audit` | `0 vulnerabilities` |
 
 `verify_step0.sh`, `e2e_check.py` and `ui_smoke.py` need the running servers
 (backend on 5000, frontend on 5173). The pytest suite and the other
@@ -486,7 +509,7 @@ Checking the **production build** end to end:
 
 ```bash
 cd frontend
-npm run build:preview        # vite build --outDir preview-dist
+npm run preview:build        # vite build --outDir preview-dist
 npm run preview:serve        # http://localhost:4173
 ```
 
@@ -510,13 +533,54 @@ preview serving a missing document root (all 404s).
 | Empty charts / blank report page | The exam has no submitted attempts yet; reports only count `submitted`/`expired` attempts |
 | `PRAGMA foreign_keys` warnings on delete | Delete through the API (cascades are declared), not manually in SQL |
 | pytest is slow (~6 min) | Intentional: bcrypt hashing of seeded accounts dominates. Use `pytest tests/test_validation.py` while iterating |
-| `npm run preview` shows a blank page or every route 404s | The output folder is missing (sandboxes wipe `dist/`). Rebuild with `npm run build:preview` and serve with `npm run preview:serve`; make sure the API is running, the preview proxies `/api` to port 5000 |
+| `npm run preview` shows a blank page or every route 404s | The output folder is missing (sandboxes wipe `dist/`). Rebuild with `npm run preview:build` and serve with `npm run preview:serve`; make sure the API is running, the preview proxies `/api` to port 5000 |
 | `/api/health` reports an old `version` | Flask runs with `use_reloader=False`: restart it after backend edits (`kill` + `python run.py`) |
 | `ui_smoke.py` reports `login rate limited, waiting 62s` | Expected if it runs right after other login-heavy scripts: the login limiter allows 10 requests a minute per IP and the script waits it out |
 
 ---
 
-## 11. Suggested improvements
+## 11. UI design system and UX review
+
+`frontend/src/index.css` is the entire design system — no CSS framework, no
+per-page overrides. Everything derives from one `:root` block:
+
+| Group | Tokens |
+| --- | --- |
+| Surface and text | `--bg`, `--surface`, `--surface-muted`, `--row-hover`, `--border`, `--border-strong`, `--border-subtle`, `--text`, `--muted` |
+| Accent | `--accent`, `--accent-hover`, `--accent-soft`, `--accent-border`, `--on-accent` |
+| Status | `--success`, `--success-soft`, `--success-border`, `--success-on-soft`, `--danger`, `--danger-strong`, `--danger-soft`, `--danger-border`, `--danger-on-soft` |
+| Type | `--text-xs` … `--text-display` (8 steps) |
+| Space, shape, depth | `--space-1` … `--space-6`, `--radius`, `--radius-sm`, `--shadow-overlay` (the only shadow) |
+
+Colour decisions are measured, not eyeballed: body text 16.1 : 1, secondary
+text 7.6 : 1, accent 6.7 : 1, error text 6.6 : 1, success text 5.0 : 1, control
+borders 3.27 : 1 — all above the WCAG 2.1 AA thresholds. `ux_check.py`
+recomputes these from the token values, so the palette cannot silently regress.
+
+**The UX review** ([frontend/UX_REVIEW.md](frontend/UX_REVIEW.md)) records what
+was audited, the seven findings and fixes (focus trap, control-border contrast,
+three high-severity router advisories, palette drift, type/spacing sprawl, dead
+CSS, hardcoded colours), and the remaining recommendations — skip link,
+`aria-busy` regions, dark mode, table virtualisation.
+
+Re-running the whole UI verification takes about a minute:
+
+```bash
+cd frontend
+npx vitest run src/test/a11y.test.jsx    # axe-core, 12 screens
+npx vitest run                           # 46 UI tests
+python3 ../scripts/ux_check.py           # 56 static UX checks
+npm audit
+```
+
+---
+
+## 12. Suggested improvements
+
+Interface work is listed in
+[frontend/UX_REVIEW.md §6](frontend/UX_REVIEW.md) (skip link, `aria-busy`
+regions, dark mode, table virtualisation); the items below are backend and
+product work.
 
 **Security**
 
