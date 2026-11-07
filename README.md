@@ -152,7 +152,7 @@ performance reports with CSV export.
 │   │   ├── test/                  # vitest + testing-library (28 tests, 6 files)
 │   │   ├── App.jsx                # routes with role guards
 │   │   └── index.css              # design tokens and layout
-│   ├── vite.config.js             # dev server + /api proxy to Flask
+│   ├── vite.config.js             # dev/preview servers + /api proxy, outDir
 │   └── package.json
 ├── scripts/
 │   ├── verify_step0.sh            # 30 checks — setup, headers, CORS, proxy, build
@@ -464,7 +464,8 @@ Everything below was executed; the numbers are the actual results.
 | 5 | `cd backend && .venv/bin/python -m pytest` | `149 passed` |
 | 5 | `cd backend && .venv/bin/python ../scripts/verify_step5.py` | `56 passed, 0 failed` |
 | e2e | `cd backend && .venv/bin/python ../scripts/e2e_check.py` | `43 passed, 0 failed` |
-| site | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | `61 passed, 0 failed` |
+| site | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | `62 passed, 0 failed` |
+| site (build) | `SITE_BASE=http://127.0.0.1:4173 .venv/bin/python ../scripts/ui_smoke.py` | `62 passed, 0 failed` |
 | UI | `cd frontend && npx vitest run` | `28 passed (6 files)` |
 | UI | `cd frontend && npx oxlint src && npm run build` | no findings, build OK |
 
@@ -473,7 +474,8 @@ Everything below was executed; the numbers are the actual results.
 `verify_stepN.py` scripts create their own data and only need the venv.
 
 **`ui_smoke.py` is the browser stand-in:** it walks every page over the same
-origin the browser uses (the Vite dev server, whose `/api` proxy reaches Flask),
+origin the browser uses (the Vite dev server, or a production preview via
+`SITE_BASE=http://127.0.0.1:4173`),
 asserts the app shell, static assets, deep-link fallbacks and the exact JSON
 fields each React page renders, then drives the whole journey — register →
 teacher creates/publishes an exam → student starts/answers/submits → result →
@@ -483,12 +485,17 @@ smoke exam. It is idempotent and safe to re-run.
 Checking the **production build** end to end:
 
 ```bash
-cd frontend && npm run build && npm run preview   # http://localhost:4173
+cd frontend
+npm run build:preview        # vite build --outDir preview-dist
+npm run preview:serve        # http://localhost:4173
 ```
 
 `vite.config.js` gives the preview server the same `/api` proxy as the dev
 server, so the built bundle can be exercised (SPA deep links included) without a
-reverse proxy.
+reverse proxy. The build output directory is configurable (`VITE_OUT_DIR`, or
+`--outDir`): `preview-dist` is used for hosted previews because sandboxes wipe
+folders named `dist`/`build`/`out` between snapshots, which would leave the
+preview serving a missing document root (all 404s).
 
 ---
 
@@ -503,7 +510,8 @@ reverse proxy.
 | Empty charts / blank report page | The exam has no submitted attempts yet; reports only count `submitted`/`expired` attempts |
 | `PRAGMA foreign_keys` warnings on delete | Delete through the API (cascades are declared), not manually in SQL |
 | pytest is slow (~6 min) | Intentional: bcrypt hashing of seeded accounts dominates. Use `pytest tests/test_validation.py` while iterating |
-| `npm run preview` shows a blank page | Rebuild (`npm run build`) and make sure the API is running; the preview server serves `dist/` and proxies `/api` to port 5000 |
+| `npm run preview` shows a blank page or every route 404s | The output folder is missing (sandboxes wipe `dist/`). Rebuild with `npm run build:preview` and serve with `npm run preview:serve`; make sure the API is running, the preview proxies `/api` to port 5000 |
+| `/api/health` reports an old `version` | Flask runs with `use_reloader=False`: restart it after backend edits (`kill` + `python run.py`) |
 | `ui_smoke.py` reports `login rate limited, waiting 62s` | Expected if it runs right after other login-heavy scripts: the login limiter allows 10 requests a minute per IP and the script waits it out |
 
 ---

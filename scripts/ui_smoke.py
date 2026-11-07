@@ -16,6 +16,7 @@ attempt per run - that is what makes its progress page worth checking.
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -107,14 +108,24 @@ def missing(obj, required):
 
 
 # ---------------------------------------------------------------------------
-print("\n[A] The site itself loads (dev server, same origin the browser uses)")
+print(f"\n[A] The site itself loads ({SITE})")
 status, html, headers = http("GET", "/")
 check("/ serves the app shell", status == 200 and 'id="root"' in html, str(status))
-check("shell loads /src/main.jsx", "/src/main.jsx" in html, html[:120])
 check("shell has the product title", "Auspify TMS" in html, html[:200])
-status, js, headers = http("GET", "/src/main.jsx")
-check("/src/main.jsx is served as JavaScript", status == 200 and "javascript" in header(headers, "Content-Type"),
-      f"{status} {header(headers, 'Content-Type')}")
+# The dev server injects /src/main.jsx; the production build (vite preview)
+# references a hashed /assets/index-*.js. Accept either and fetch whatever the
+# shell actually points at - that is the file the browser would load.
+# dev serves /src/main.jsx (Vite also injects an inline refresh preamble);
+# the production build references /assets/index-<hash>.js
+entry = re.search(r'<script[^>]+src="([^"]+\.(?:m?js|jsx))"', html)
+check("shell references a JavaScript entry point", entry is not None, html[:200])
+if entry:
+    entry_path = entry.group(1)
+    status, js_body, js_headers = http("GET", entry_path)
+    check(f"entry {entry_path} is served as JavaScript",
+          status == 200 and "javascript" in header(js_headers, "Content-Type"),
+          f"{status} {header(js_headers, 'Content-Type')}")
+    check("the entry bundle has content", len(js_body) > 1000, f"{len(js_body)} bytes")
 check("favicon exists (no 404 in the console)", http("GET", "/favicon.svg")[0] == 200)
 for route in ("/login", "/register", "/student", "/student/progress", "/teacher", "/teacher/exams/1",
               "/teacher/reports/1", "/teacher/students/1", "/does-not-exist"):

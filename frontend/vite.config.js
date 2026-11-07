@@ -5,8 +5,17 @@ import react from '@vitejs/plugin-react'
 // The API is reached through a relative `/api` path, which Vite proxies to
 // Flask in development. That keeps the browser on a single origin, so no
 // CORS preflight is needed and the deployed preview host works unchanged.
+// Build output. `dist` is the normal default; hosted preview sandboxes wipe
+// folders named dist/build/out between snapshots, so VITE_OUT_DIR can point the
+// build (and `vite preview`) at a durable directory such as `preview-dist`.
+const OUT_DIR = process.env.VITE_OUT_DIR || 'dist'
+
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: OUT_DIR,
+    emptyOutDir: true,
+  },
   server: {
     host: '0.0.0.0', // listen on all interfaces (required for previews)
     port: 5173,
