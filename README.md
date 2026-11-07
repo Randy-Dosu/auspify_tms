@@ -59,8 +59,9 @@ performance reports with CSV export.
   absolute deadline and re-synced from the server whenever the tab regains
   focus; every write is re-checked server-side, so editing the browser clock or
   sleeping the laptop cannot extend the exam.
-- Answers autosave, leaving/reloading the page mid-attempt warns first, and the
-  attempt auto-submits (graded as `expired`) when time runs out.
+- Answers autosave on every click; reloading or closing the tab mid-attempt
+  warns first (in-app navigation is allowed, since every answer is already
+  saved), and the attempt auto-submits (graded as `expired`) when time runs out.
 - The answer key never leaves the server until the exam window closes.
 
 **Grading and results**
@@ -183,6 +184,8 @@ performance reports with CSV export.
 │   ├── ui_smoke.py                # 62 checks — every page, over the UI origin
 │   ├── ux_check.py                # 56 checks — design tokens, contrast, a11y, UX states
 │   └── e2e_check.py               # 43 checks — full walkthrough over real HTTP
+├── COMPLETION_AUDIT.md            # README-vs-code audit: every claim re-verified
+├── LICENSE
 ├── .gitignore                     # .env, instance/, node_modules, dist, …
 └── README.md
 ```
@@ -247,7 +250,9 @@ python -c "import secrets; print('JWT_SECRET_KEY=' + secrets.token_hex(32))"
 | `MAX_FAILED_LOGINS` | no | `5` | Failures before lockout |
 | `LOCKOUT_MINUTES` | no | `15` | Lockout duration |
 | `LOGIN_RATE_LIMIT` | no | `10 per minute` | Flask-Limiter limit for `/api/auth/login` |
+| `REGISTER_RATE_LIMIT` | no | `20 per minute` | Flask-Limiter limit for `/api/auth/register` |
 | `RATELIMIT_STORAGE_URI` | no | `memory://` | Use Redis in production |
+| `RATELIMIT_ENABLED` | no | `1` | `0` disables the limiter (used by the pytest suite) |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | no | — | Used by `seed.py` |
 | `SEED_TEACHER_EMAIL` / `SEED_TEACHER_PASSWORD` | no | — | Used by `seed.py` |
 | `SEED_STUDENT1..3_EMAIL`, `SEED_STUDENT_PASSWORD` | no | — | Used by `seed.py` |
@@ -472,7 +477,9 @@ Full detail, findings and fixes: **[`backend/SECURITY_REPORT.md`](backend/SECURI
 
 ## 9. Verification
 
-Everything below was executed; the numbers are the actual results.
+Everything below was executed; the numbers are the actual results. Every claim
+in this README was re-checked against the code on 2026‑11‑07 — see
+[COMPLETION_AUDIT.md](COMPLETION_AUDIT.md).
 
 | Step | Command | Expected |
 | --- | --- | --- |
