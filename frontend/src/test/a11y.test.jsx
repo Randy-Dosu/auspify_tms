@@ -151,7 +151,6 @@ const BASE_HANDLERS = (user) => [
 
 const SCREENS = [
   { name: 'login', path: '/login', user: null },
-  { name: 'register', path: '/register', user: null },
   { name: 'student dashboard', path: '/dashboard', user: STUDENT },
   { name: 'student exam list', path: '/student', user: STUDENT },
   { name: 'taking an exam', path: '/student/attempts/7', user: STUDENT },

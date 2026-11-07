@@ -20,9 +20,10 @@ by executing the code, not by inspection.
 
 | Module | Tests | Focus |
 | --- | --- | --- |
-| `tests/test_auth_security.py` | 25 | brute force, lockout, token forgery/expiry/revocation, password policy, mass assignment, enumeration, secrets in responses |
+| `tests/test_auth_security.py` | 22 | brute force, lockout, token forgery/expiry/revocation, password policy, disabled self-registration, enumeration, secrets in responses |
 | `tests/test_authorization.py` | 23 | vertical (role) and horizontal (ownership) access control, anonymous access |
-| `tests/test_injection.py` | 41 | SQL injection (login, register, path/query/body), XSS payload round‑trips, error‑page format, frontend `innerHTML` audit |
+| `tests/test_injection.py` | 41 | SQL injection (login, provisioning, path/query/body), XSS payload round‑trips, error‑page format, frontend `innerHTML` audit |
+| `tests/test_sms_integration.py` | 48 | request signing (tampering, replay, skew, wrong secret/client), mutual verification handshake, provisioning rules, role escalation, staff-account protection, password rotation, lockout clearing, IP allow-list, disabled integration |
 | `tests/test_exam_integrity.py` | 17 | answer‑key leakage, server‑side timer, replay/double submit, retakes, post‑submission edits, review gating |
 | `tests/test_validation.py` | 27 | malformed JSON, wrong types, out‑of‑range values, oversized bodies, absurd/negative ids, method override |
 | `tests/test_config_and_headers.py` | 16 | secrets in repo, `.env` git‑ignored, CORS allow‑list, security headers, debug off, production guards, internals in errors |
@@ -124,6 +125,26 @@ so the suite is safe to run against a machine with real data.
 
 ---
 
+### 2.x Student provisioning (SMS integration)
+
+Students cannot create accounts, so the provisioning API is the account-creation
+surface and is treated as hostile ground.
+
+| Control | Expected | Verified by |
+| --- | --- | --- |
+| Request authenticity | HMAC-SHA256 over method, path, timestamp, nonce and SHA-256(body); constant-time compare | `TestRequestSigning::test_wrong_secret_is_refused`, `test_tampered_signature_is_refused`, live e2e |
+| Body integrity | any modified field → 401 | `test_tampered_body_is_refused` |
+| Replay resistance | one-time nonce stored in `sms_nonces`, ±300 s timestamp window | `test_nonce_cannot_be_replayed`, `test_clock_skew_is_refused` |
+| Mutual verification | TMS signs the SMS challenge; replies carry `X-TMS-Signature` bound to the request nonce | `test_handshake_signs_the_callers_challenge`, `test_responses_are_signed_for_the_sms_to_verify` |
+| No browser path | a valid admin JWT cannot call the API | `test_jwt_cannot_authorise_the_provisioning_api` |
+| Fail closed | empty secret → 503 on every route | `test_integration_disabled_returns_503` |
+| Network pinning | optional IP allow-list | `test_ip_allow_list_is_enforced` |
+| Privilege escalation | `role`/`id`/`is_active` in the body are excluded; staff accounts are refused (409) | `test_role_escalation_through_the_body_is_ignored`, `test_staff_accounts_cannot_be_turned_into_students` |
+| Credential handling | bcrypt-hashed on arrival, never logged or returned; rotation clears a lockout | `test_plain_text_password_is_never_logged`, `test_provisioning_never_echoes_the_password`, `test_password_rotation_and_lockout_clear` |
+| Disabled self-registration | `POST /api/auth/register` is a 403 stub that creates nothing and reveals nothing | `TestSelfRegistrationDisabled` |
+
+---
+
 ## 3. Findings and fixes
 
 Every finding below was discovered **by running the checks in this step**, then
@@ -141,6 +162,16 @@ Also fixed during this step (functional, not security): the Step 4 CSV export
 raised `KeyError: 'answered_count'` → HTTP 500 for any exam with graded
 attempts; the field is now `graded_count` and the CSV header reads
 "Graded attempts" (`scripts/verify_step4.py`, 68/68).
+
+---
+
+### Findings from the provisioning work
+
+| ID | Severity | Finding | Fix | Re-verified by |
+| --- | --- | --- | --- | --- |
+| **F6** | High (design) | Public self-registration let anyone create a student account, so a person could sit exams they are not enrolled for and the TMS had no authoritative student list. | Registration is now a 403 stub; students are provisioned by the SMS over a signed API, and the client no longer ships a register screen or route. | `TestSelfRegistrationDisabled`, `test_no_longer_offers_self_registration` (vitest), `verify_step1.py` |
+| **F7** | Medium | A shared bearer token or IP-only trust between the two servers would have allowed replay and body tampering. | HMAC-SHA256 over the exact body plus timestamp + one-time nonce; responses signed back; optional IP allow-list. | `test_sms_integration.py` (48) |
+| **F8** | Low | Existing databases had no `course`/`student_number` columns; the new partial unique index failed on upgrade. | `db.py::_migrate_user_columns` adds missing columns *before* `schema.sql` runs. | startup on the existing dev database, `seed.py` re-run |
 
 ---
 

@@ -1,9 +1,81 @@
 """Shared helpers for the security tests."""
 
+import hashlib
+import hmac
+import json
+import secrets
+import time
 from datetime import timedelta
 
 from app.db import get_db
 from app.security import hash_password, to_iso, utcnow
+
+# --- Student Management System (SMS) integration ---------------------------
+SMS_CLIENT_ID = "test-sms"
+SMS_SECRET = "test-sms-secret-" + "c" * 40
+
+
+def sign_request(secret, method, path, timestamp, nonce, body: bytes) -> str:
+    """Mirror of app.sms.canonical_request, written independently."""
+    canonical = "\n".join(
+        [
+            "v1",
+            method.upper(),
+            path,
+            timestamp,
+            nonce,
+            hashlib.sha256(body).hexdigest(),
+        ]
+    )
+    return hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+
+
+class SmsRequester:
+    """Signs provisioning calls the way the real SMS would."""
+
+    def __init__(self, client, client_id=SMS_CLIENT_ID, secret=SMS_SECRET):
+        self.client = client
+        self.client_id = client_id
+        self.secret = secret
+
+    def headers(self, path, payload, *, timestamp=None, nonce=None, secret=None, client_id=None, body=None):
+        body = json.dumps(payload, separators=(",", ":")).encode() if body is None else body
+        timestamp = str(int(time.time())) if timestamp is None else str(timestamp)
+        nonce = secrets.token_hex(16) if nonce is None else nonce
+        signature = sign_request(secret or self.secret, "POST", path, timestamp, nonce, body)
+        return {
+            "Content-Type": "application/json",
+            "X-SMS-Client": client_id or self.client_id,
+            "X-SMS-Timestamp": timestamp,
+            "X-SMS-Nonce": nonce,
+            "X-SMS-Signature": f"v1={signature}",
+        }, body
+
+    def post(self, path, payload, *, timestamp=None, nonce=None, secret=None, client_id=None, body=None):
+        headers, raw = self.headers(
+            path,
+            payload,
+            timestamp=timestamp,
+            nonce=nonce,
+            secret=secret,
+            client_id=client_id,
+            body=body,
+        )
+        return self.client.post(path, data=raw, headers=headers)
+
+    # Convenience wrappers -------------------------------------------------
+    def handshake(self, challenge="c" * 40):
+        return self.post("/api/integration/handshake", {"challenge": challenge})
+
+    def provision(self, email, name="Provisioned Student", password="Provision1", **extra):
+        payload = {"full_name": name, "email": email, "password": password, **extra}
+        return self.post("/api/integration/students", payload)
+
+    def status(self, email, is_active):
+        return self.post("/api/integration/students/status", {"email": email, "is_active": is_active})
+
+    def lookup(self, email):
+        return self.post("/api/integration/students/lookup", {"email": email})
 
 # email, full name, password, role
 ACCOUNTS = [

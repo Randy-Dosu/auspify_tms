@@ -15,33 +15,50 @@ from app import create_app
 from app.db import get_db
 from app.security import hash_password, to_iso, utcnow
 
-# (full_name, email_env, email_default, password_env, role)
+# (full_name, email_env, email_default, password_env, role, course, student_number)
+# Students carry the same fields the SMS integration provisions, so the local
+# development data looks like production data.
 ACCOUNTS = [
-    ("System Administrator", "SEED_ADMIN_EMAIL", "admin@auspify.test", "SEED_ADMIN_PASSWORD", "admin"),
-    ("Grace Mensah", "SEED_TEACHER_EMAIL", "teacher@auspify.test", "SEED_TEACHER_PASSWORD", "teacher"),
-    ("Kofi Boateng", "SEED_STUDENT1_EMAIL", "student1@auspify.test", "SEED_STUDENT_PASSWORD", "student"),
-    ("Ama Owusu", "SEED_STUDENT2_EMAIL", "student2@auspify.test", "SEED_STUDENT_PASSWORD", "student"),
-    ("Yaw Darko", "SEED_STUDENT3_EMAIL", "student3@auspify.test", "SEED_STUDENT_PASSWORD", "student"),
+    ("System Administrator", "SEED_ADMIN_EMAIL", "admin@auspify.test", "SEED_ADMIN_PASSWORD", "admin", None, None),
+    ("Grace Mensah", "SEED_TEACHER_EMAIL", "teacher@auspify.test", "SEED_TEACHER_PASSWORD", "teacher", None, None),
+    ("Kofi Boateng", "SEED_STUDENT1_EMAIL", "student1@auspify.test", "SEED_STUDENT_PASSWORD", "student",
+     "BSc Computer Science", "CS/2024/0001"),
+    ("Ama Owusu", "SEED_STUDENT2_EMAIL", "student2@auspify.test", "SEED_STUDENT_PASSWORD", "student",
+     "BSc Information Technology", "IT/2024/0002"),
+    ("Yaw Darko", "SEED_STUDENT3_EMAIL", "student3@auspify.test", "SEED_STUDENT_PASSWORD", "student",
+     "BSc Computer Science", "CS/2024/0003"),
 ]
 
 
-def upsert_user(db, full_name: str, email: str, password: str, role: str) -> str:
+def upsert_user(db, full_name, email, password, role, course=None, student_number=None) -> str:
     """Create the account, or reset its password/role if it already exists."""
     email = email.strip().lower()
     existing = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
     if existing:
         db.execute(
             "UPDATE users SET full_name = ?, password_hash = ?, role = ?, is_active = 1,"
-            " failed_login_attempts = 0, locked_until = NULL WHERE id = ?",
-            (full_name, hash_password(password), role, existing["id"]),
+            " failed_login_attempts = 0, locked_until = NULL, course = ?,"
+            " student_number = ? WHERE id = ?",
+            (full_name, hash_password(password), role, course, student_number, existing["id"]),
         )
         return "updated"
     db.execute(
         """
-        INSERT INTO users (full_name, email, password_hash, role, is_active, created_at)
-        VALUES (?, ?, ?, ?, 1, ?)
+        INSERT INTO users (
+            full_name, email, password_hash, role, is_active, created_at,
+            course, student_number, provisioned_by, provisioned_at
+        ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 'seed', ?)
         """,
-        (full_name, email, hash_password(password), role, to_iso(utcnow())),
+        (
+            full_name,
+            email,
+            hash_password(password),
+            role,
+            to_iso(utcnow()),
+            course,
+            student_number,
+            to_iso(utcnow()) if role == "student" else None,
+        ),
     )
     return "created"
 
@@ -56,13 +73,21 @@ def main() -> int:
     with app.app_context():
         db = get_db()
         print(f"Seeding {len(ACCOUNTS)} accounts into {app.config['DATABASE_PATH']}\n")
-        for full_name, email_env, email_default, password_env, role in ACCOUNTS:
+        for (
+            full_name,
+            email_env,
+            email_default,
+            password_env,
+            role,
+            course,
+            student_number,
+        ) in ACCOUNTS:
             email = os.environ.get(email_env, email_default)
             password = os.environ.get(password_env)
             if not password:
                 password = secrets.token_urlsafe(9)
                 generated.append((email, password))
-            action = upsert_user(db, full_name, email, password, role)
+            action = upsert_user(db, full_name, email, password, role, course, student_number)
             print(f"  {action:8s} {role:7s} {email}")
 
     print("\nDone.")

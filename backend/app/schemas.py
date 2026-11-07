@@ -29,15 +29,40 @@ def _password(value: str) -> str:
     return value
 
 
-class RegisterSchema(_Base):
-    """Public self-registration: students only.
+class SmsStudentSchema(_Base):
+    """A student record pushed by the Student Management System.
 
-    There is intentionally no ``role`` field - a client cannot choose its role.
+    There is intentionally no ``role`` field: unknown keys are excluded, so the
+    SMS cannot create an admin or a teacher through this API.
     """
 
     full_name = fields.String(required=True, validate=validate.Length(min=2, max=120))
     email = fields.String(required=True, validate=_email)
-    password = fields.String(required=True, validate=_password)
+    # Required when the account is new; optional on an update, where a blank
+    # password means "keep the existing credential".
+    password = fields.String(load_default=None, allow_none=True, validate=_password)
+    course = fields.String(load_default="", validate=validate.Length(max=120))
+    student_number = fields.String(
+        load_default=None, allow_none=True, validate=validate.Length(min=2, max=32)
+    )
+    is_active = fields.Boolean(load_default=True)
+
+
+class SmsStudentStatusSchema(_Base):
+    """Activate or deactivate a provisioned student."""
+
+    email = fields.String(required=True, validate=_email)
+    is_active = fields.Boolean(required=True)
+
+
+class SmsStudentLookupSchema(_Base):
+    email = fields.String(required=True, validate=_email)
+
+
+class SmsHandshakeSchema(_Base):
+    # The SMS picks the challenge, so the signed reply cannot be replayed from
+    # an earlier handshake.
+    challenge = fields.String(required=True, validate=validate.Length(min=16, max=128))
 
 
 class LoginSchema(_Base):

@@ -137,33 +137,24 @@ describe('Step 1 — authentication UI', () => {
     expect(localStorage.getItem('auspify.access_token')).toBeNull()
   })
 
-  it('blocks registration with a weak password before calling the API', async () => {
-    const calls = mockApi({})
-    renderApp('/register')
+  it('no longer offers self-registration', async () => {
+    mockApi({})
+    renderApp('/login')
 
-    await userEvent.type(screen.getByLabelText(/full name/i), 'New Student')
-    await userEvent.type(screen.getByLabelText(/^email/i), 'new@auspify.test')
-    await userEvent.type(screen.getByLabelText(/^password/i), 'onlyletters')
-    await userEvent.type(screen.getByLabelText(/confirm password/i), 'onlyletters')
-    await userEvent.click(screen.getByRole('button', { name: /create account/i }))
-
-    expect(await screen.findByText(/use letters and numbers/i)).toBeInTheDocument()
-    expect(calls.some((call) => call.key === 'POST /auth/register')).toBe(false)
+    await screen.findByRole('heading', { name: /sign in/i })
+    expect(
+      screen.queryByRole('link', { name: /create an account/i }),
+    ).not.toBeInTheDocument()
+    // The page explains where credentials come from instead.
+    expect(screen.getByText(/student management system/i)).toBeInTheDocument()
   })
 
-  it('registers a student and lands on the student dashboard', async () => {
-    mockApi({
-      'POST /auth/register': () => jsonResponse({ access_token: TOKEN, token_type: 'Bearer', expires_in_minutes: 30, user: STUDENT }, 201),
-      'GET /auth/me': () => jsonResponse({ user: STUDENT }),
-    })
-
+  it('answers the removed /register route with the not-found screen', async () => {
+    mockApi({})
     renderApp('/register')
-    await userEvent.type(screen.getByLabelText(/full name/i), 'Kofi Boateng')
-    await userEvent.type(screen.getByLabelText(/^email/i), 'kofi@auspify.test')
-    await userEvent.type(screen.getByLabelText(/^password/i), 'StudentPass1')
-    await userEvent.type(screen.getByLabelText(/confirm password/i), 'StudentPass1')
-    await userEvent.click(screen.getByRole('button', { name: /create account/i }))
 
-    expect(await screen.findByRole('heading', { name: /hello, kofi/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /404/i }),
+    ).toBeInTheDocument()
   })
 })

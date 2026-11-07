@@ -103,12 +103,6 @@ export function getHealth() {
 export const authApi = {
   login: (email, password) =>
     request('/auth/login', { method: 'POST', auth: false, body: { email, password } }),
-  register: (fullName, email, password) =>
-    request('/auth/register', {
-      method: 'POST',
-      auth: false,
-      body: { full_name: fullName, email, password },
-    }),
   me: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
 }

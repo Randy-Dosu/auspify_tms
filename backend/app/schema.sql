@@ -21,12 +21,33 @@ CREATE TABLE IF NOT EXISTS users (
     is_active               INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
     failed_login_attempts   INTEGER NOT NULL DEFAULT 0,
     locked_until            TEXT,                          -- UTC ISO-8601 or NULL
-    created_at              TEXT    NOT NULL
+    created_at              TEXT    NOT NULL,
+    -- Student data provisioned by the student management system (SMS).
+    -- Staff rows keep these NULL.
+    course                  TEXT,
+    student_number          TEXT,                          -- matriculation number
+    provisioned_by          TEXT    NOT NULL DEFAULT 'local',  -- 'sms:<client>' | 'seed' | 'admin'
+    provisioned_at          TEXT                           -- UTC ISO-8601 or NULL
 );
 
 -- Unique index on email (also prevents duplicate registrations).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
+-- A matriculation number identifies exactly one student, when it is known.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_number
+    ON users (student_number) WHERE student_number IS NOT NULL;
+
+-- Student Management System (SMS) nonces -------------------------------------
+-- Every signed request carries a one-time nonce. Storing it until its
+-- timestamp window expires makes a captured request impossible to replay.
+CREATE TABLE IF NOT EXISTS sms_nonces (
+    nonce      TEXT NOT NULL PRIMARY KEY,
+    client_id  TEXT NOT NULL,
+    seen_at    TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sms_nonces_expires ON sms_nonces (expires_at);
 
 -- Revoked JWTs --------------------------------------------------------------
 -- Logout inserts the token's jti here; every request checks it, so a token

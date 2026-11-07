@@ -1,8 +1,7 @@
 """End-to-end smoke test against the RUNNING API (real HTTP, real database).
 
-Uses the seeded accounts from backend/.env. Grows with each step; by Step 5 it
-is the full walkthrough: register -> login -> create exam -> take -> result ->
-reports -> logout.
+Uses the seeded accounts from backend/.env. It is the full walkthrough:
+SMS provisioning -> login -> create exam -> take -> result -> reports -> logout.
 
     cd backend && .venv/bin/python ../scripts/e2e_check.py
 """
@@ -14,11 +13,15 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-BACKEND = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "backend"))
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+BACKEND = os.path.abspath(os.path.join(SCRIPTS, os.pardir, "backend"))
 sys.path.insert(0, BACKEND)
+sys.path.insert(0, SCRIPTS)
 os.chdir(BACKEND)
 
 from dotenv import dotenv_values  # noqa: E402
+
+from sms_client import SmsClient, SmsError  # noqa: E402
 
 ENV = dotenv_values(".env")
 BASE = os.environ.get("API_BASE", "http://127.0.0.1:5000/api")
@@ -89,6 +92,39 @@ check("student can log in", student["role"] == "student", student)
 
 admin_token, admin = login("SEED_ADMIN_EMAIL", "SEED_ADMIN_PASSWORD")
 check("admin can log in", admin["role"] == "admin", admin)
+
+# ---------------------------------------------------------------------------
+# Student provisioning through the SMS API (students cannot self-register)
+# ---------------------------------------------------------------------------
+print("\n== SMS provisioning ==")
+E2E_STUDENT = "e2e-provisioned@t.test"
+E2E_PASSWORD = "E2eStudent123"
+sms = SmsClient(os.environ.get("API_ORIGIN", "http://127.0.0.1:5000"), ENV.get("SMS_CLIENT_ID", "sms-gateway"), ENV.get("SMS_CLIENT_SECRET", ""))
+
+handshake = sms.handshake()
+check("the SMS verifies the TMS (signed challenge)", handshake.get("service") == "auspify-tms", str(handshake)[:120])
+
+status, refused = call("POST", "/auth/register", body={"full_name": "Self Service", "email": "self@t.test", "password": "ValidPass1"})
+check("self-registration is refused with a helpful message", status == 403 and "student management system" in json.dumps(refused).lower(), refused)
+
+provisioned = sms.provision("E2E Student", E2E_STUDENT, course="BSc Computer Science", student_number="E2E/0001", password=E2E_PASSWORD)
+student_record = provisioned.get("student", {})
+check("the SMS provisions a student account", student_record.get("role") == "student" and student_record.get("email") == E2E_STUDENT, str(provisioned)[:140])
+check("provisioned course/student number are stored", student_record.get("course") == "BSc Computer Science" and student_record.get("student_number") == "E2E/0001", student_record)
+
+status, provisioned_login = call("POST", "/auth/login", body={"email": E2E_STUDENT, "password": E2E_PASSWORD})
+check("the provisioned student can sign in", status == 200 and provisioned_login["user"]["student_number"] == "E2E/0001", provisioned_login)
+
+try:
+    SmsClient(os.environ.get("API_ORIGIN", "http://127.0.0.1:5000"), ENV.get("SMS_CLIENT_ID", "sms-gateway"), "0" * 64).lookup(E2E_STUDENT)
+    check("an unsigned/wrongly-signed provisioning call is rejected", False, "it succeeded")
+except SmsError as exc:
+    check("an unsigned/wrongly-signed provisioning call is rejected", exc.status == 401, str(exc))
+
+sms.set_status(E2E_STUDENT, False)
+status, _ = call("POST", "/auth/login", body={"email": E2E_STUDENT, "password": E2E_PASSWORD})
+check("a deactivated student cannot sign in", status == 401, status)
+sms.set_status(E2E_STUDENT, True)
 
 now = datetime.now(timezone.utc)
 title = f"E2E Algebra {now.strftime('%H%M%S')}"

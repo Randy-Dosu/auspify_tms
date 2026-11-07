@@ -23,7 +23,7 @@ os.environ["APP_DEBUG"] = "0"  # production-like: debug must be off
 from app import create_app  # noqa: E402
 from app.config import Config  # noqa: E402
 
-from .helpers import ACCOUNTS, seed_accounts  # noqa: E402
+from .helpers import ACCOUNTS, SMS_CLIENT_ID, SMS_SECRET, SmsRequester, seed_accounts  # noqa: E402
 
 
 def build_app(**overrides):
@@ -35,6 +35,12 @@ def build_app(**overrides):
         TESTING = True
         DEBUG = False
         RATELIMIT_ENABLED = False
+        # The SMS integration is on by default in tests; individual tests
+        # switch it off or rotate the secret to prove it is enforced.
+        SMS_CLIENT_ID = SMS_CLIENT_ID
+        SMS_CLIENT_SECRET = SMS_SECRET
+        SMS_MAX_SKEW_SECONDS = 300
+        SMS_ALLOWED_IPS = []
 
     for key, value in overrides.items():
         setattr(TestConfig, key, value)
@@ -54,6 +60,12 @@ def app():
 @pytest.fixture()
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture()
+def sms(client):
+    """A signed-request client standing in for the student management system."""
+    return SmsRequester(client)
 
 
 @pytest.fixture()

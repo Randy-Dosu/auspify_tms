@@ -1,6 +1,6 @@
 # Completion audit — README vs. repository
 
-**Date:** 2026‑11‑07 · **Commit:** `8651755` (branch `arena/7b3dca45-auspify-tms`, clean tree)
+**Date:** 2026‑11‑07 · **Commit:** the step-7 provisioning commit (branch `arena/7b3dca45-auspify-tms`, clean tree)
 **Question:** does the repository actually do what `README.md` says it does?
 
 **Verdict: yes.** Every feature, endpoint, table, environment variable and
@@ -18,17 +18,17 @@ cell for cell.
 | README claim | Command re-run | Result |
 | --- | --- | --- |
 | step 0 — `30 passed` | `./scripts/verify_step0.sh` | **30 passed, 0 failed** |
-| step 1 — `54 passed` | `scripts/verify_step1.py` | **54 passed, 0 failed** |
+| step 1 — `68 passed` | `scripts/verify_step1.py` | **68 passed, 0 failed** |
 | step 2 — `79 passed` | `scripts/verify_step2.py` | **79 passed, 0 failed** |
 | step 3 — `44 passed` | `scripts/verify_step3.py` | **44 passed, 0 failed** |
 | step 4 — `68 passed` | `scripts/verify_step4.py` | **68 passed, 0 failed** |
 | step 5 — `56 passed` | `scripts/verify_step5.py` | **56 passed, 0 failed** |
-| pytest — `149 passed` | `.venv/bin/python -m pytest` | **149 passed in 366 s** |
-| e2e — `43 passed` | `scripts/e2e_check.py` | **43 passed, 0 failed** |
-| site — `62 passed` | `scripts/ui_smoke.py` (dev, :5173) | **62 passed, 0 failed** |
-| site build — `62 passed` | `SITE_BASE=…:4173 ui_smoke.py` | **62 passed, 0 failed** |
-| UI — `46 passed (8 files)` | `npx vitest run` | **46 passed (8 files)** |
-| a11y — `13 passed, 0 violations` | `npx vitest run src/test/a11y.test.jsx` | **13 passed** |
+| pytest — `194 passed` | `.venv/bin/python -m pytest` | **194 passed** |
+| e2e — `50 passed` | `scripts/e2e_check.py` | **50 passed, 0 failed** |
+| site — `67 passed` | `scripts/ui_smoke.py` (dev, :5173) | **67 passed, 0 failed** |
+| site build — `67 passed` | `SITE_BASE=…:4173 ui_smoke.py` | **67 passed, 0 failed** |
+| UI — `45 passed (8 files)` | `npx vitest run` | **45 passed (8 files)** |
+| a11y — `12 passed, 0 violations` | `npx vitest run src/test/a11y.test.jsx` | **12 passed** |
 | UX — `56 passed` | `python3 ../scripts/ux_check.py` | **56 passed, 0 failed** |
 | UI — no lint findings, build OK | `npx oxlint src && npm run build` | **0 warnings / 0 errors**, build ✓ |
 | deps — `0 vulnerabilities` | `npm audit` | **0 vulnerabilities** |

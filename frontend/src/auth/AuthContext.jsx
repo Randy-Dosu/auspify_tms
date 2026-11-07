@@ -41,13 +41,6 @@ export function AuthProvider({ children }) {
     return data.user
   }, [])
 
-  const register = useCallback(async (fullName, email, password) => {
-    const data = await authApi.register(fullName, email, password)
-    tokenStore.set(data.access_token)
-    setUser(data.user)
-    return data.user
-  }, [])
-
   const logout = useCallback(async () => {
     try {
       await authApi.logout() // revokes the token server-side
@@ -60,8 +53,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, isAuthenticated: Boolean(user) }),
-    [user, loading, login, register, logout],
+    () => ({ user, loading, login, logout, isAuthenticated: Boolean(user) }),
+    [user, loading, login, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

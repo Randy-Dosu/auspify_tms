@@ -8,7 +8,8 @@ check.
 
     cd frontend && ../backend/.venv/bin/python ../scripts/ui_smoke.py
 
-It is idempotent: it reuses a fixed smoke account (registering it once) and
+It is idempotent: it reuses a fixed smoke account (provisioning it once through
+the signed student management system API, exactly as a real SMS would) and
 creates one fresh smoke exam per run, which it unpublishes when finished so
 seeded students never see it. The smoke account therefore accumulates one
 attempt per run - that is what makes its progress page worth checking.
@@ -22,11 +23,15 @@ import time
 import urllib.error
 import urllib.request
 
-BACKEND = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "backend"))
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+BACKEND = os.path.abspath(os.path.join(SCRIPTS, os.pardir, "backend"))
 sys.path.insert(0, BACKEND)
+sys.path.insert(0, SCRIPTS)
 os.chdir(BACKEND)
 
 from dotenv import dotenv_values  # noqa: E402
+
+from sms_client import SmsClient, SmsError  # noqa: E402
 
 ENV = dotenv_values(".env")
 SITE = os.environ.get("SITE_BASE", "http://127.0.0.1:5173")
@@ -128,7 +133,7 @@ if entry:
           f"{status} {header(js_headers, 'Content-Type')}")
     check("the entry bundle has content", len(js_body) > 1000, f"{len(js_body)} bytes")
 check("favicon exists (no 404 in the console)", http("GET", "/favicon.svg")[0] == 200)
-for route in ("/login", "/register", "/student", "/student/progress", "/teacher", "/teacher/exams/1",
+for route in ("/login", "/dashboard", "/student", "/student/progress", "/teacher", "/teacher/exams/1",
               "/teacher/reports/1", "/teacher/students/1", "/does-not-exist"):
     status, body, _ = http("GET", route)
     check(f"deep link {route} falls back to the SPA", status == 200 and 'id="root"' in body, str(status))
@@ -142,14 +147,44 @@ check("no token -> 401 (AuthProvider clears the session)", status == 401, str(st
 status, bad, _ = login(SMOKE_EMAIL, "definitely-wrong-1")
 check("wrong password -> generic 401 shown in the Alert", status == 401 and "error" in bad, f"{status} {bad}")
 
-status, created, _ = api("POST", "/auth/register",
-                         body={"full_name": "UI Smoke", "email": SMOKE_EMAIL, "password": SMOKE_PASSWORD})
+status, refused, _ = api("POST", "/auth/register",
+                         body={"full_name": "UI Smoke", "email": "self-service@t.test",
+                               "password": SMOKE_PASSWORD})
+check("self-registration is refused (403, explains the SMS hand-off)",
+      status == 403 and "student management system" in str(refused).lower(),
+      f"{status} {refused}")
+
+print("\n[B2] Student provisioning through the SMS API")
+try:
+    sms = SmsClient(SITE, ENV.get("SMS_CLIENT_ID", "sms-gateway"), ENV.get("SMS_CLIENT_SECRET", ""))
+    handshake = sms.handshake()
+    check("the SMS verifies the TMS before sending student data",
+          handshake.get("service") == "auspify-tms", str(handshake)[:160])
+    provisioned = sms.provision(
+        "UI Smoke",
+        SMOKE_EMAIL,
+        course="BSc Computer Science",
+        student_number="SMOKE/0001",
+        password=SMOKE_PASSWORD,
+    )
+    student = (provisioned or {}).get("student") or {}
+    check("the SMS provisions the smoke student (idempotent)",
+          student.get("role") == "student" and student.get("email") == SMOKE_EMAIL,
+          str(provisioned)[:160])
+    check("provisioned data reaches the account",
+          student.get("course") == "BSc Computer Science"
+          and student.get("student_number") == "SMOKE/0001",
+          str(student)[:160])
+    check("the provisioning response never contains a password",
+          "password" not in json.dumps(provisioned).lower(), str(provisioned)[:160])
+    try:
+        SmsClient(SITE, ENV.get("SMS_CLIENT_ID", "sms-gateway"), "0" * 64).lookup(SMOKE_EMAIL)
+        check("a wrong SMS secret is rejected", False, "the call succeeded")
+    except SmsError as exc:
+        check("a wrong SMS secret is rejected", exc.status == 401, str(exc))
+except SmsError as exc:  # pragma: no cover - only when the secret is missing
+    check("SMS integration is configured", False, str(exc))
 student_token = None
-if status == 201:
-    check("register page flow creates a student", created.get("user", {}).get("role") == "student", str(created)[:160])
-    student_token = created.get("access_token")
-else:
-    check("smoke account already exists (re-runnable)", status == 409, f"{status} {created}")
 
 status, student_login, _ = login(SMOKE_EMAIL, SMOKE_PASSWORD)
 student_user = (student_login or {}).get("user") or {}

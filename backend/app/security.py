@@ -96,7 +96,16 @@ def from_iso(value):
 # ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
-PUBLIC_USER_FIELDS = ("id", "full_name", "email", "role", "is_active", "created_at")
+PUBLIC_USER_FIELDS = (
+    "id",
+    "full_name",
+    "email",
+    "role",
+    "is_active",
+    "created_at",
+    "course",
+    "student_number",
+)
 
 
 def serialise_user(row) -> dict:

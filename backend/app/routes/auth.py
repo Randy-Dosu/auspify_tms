@@ -1,6 +1,6 @@
 """Authentication endpoints.
 
-POST /api/auth/register  students only (self service)
+POST /api/auth/register  DISABLED - students are provisioned by the SMS API
 POST /api/auth/login     rate limited, account lockout after N failures
 POST /api/auth/logout    revokes the presented token
 GET  /api/auth/me        the caller's profile
@@ -16,7 +16,7 @@ from werkzeug.exceptions import BadRequest
 
 from ..db import transaction, get_db
 from ..extensions import limiter
-from ..schemas import CreateUserSchema, LoginSchema, RegisterSchema
+from ..schemas import CreateUserSchema, LoginSchema
 from ..security import (
     current_user,
     find_user_by_email,
@@ -105,42 +105,27 @@ def _token_response(user, status: int = 200):
 @bp.post("/register")
 @limiter.limit(lambda: current_app.config["REGISTER_RATE_LIMIT"])
 def register():
-    """Public registration. Always creates a STUDENT, whatever the body says."""
-    payload, error = _validate(RegisterSchema(), json_body())
-    if error:
-        return error
+    """Self-registration is disabled.
 
-    email = payload["email"]
-    db = get_db()
-
-    if find_user_by_email(email) is not None:
-        # 409 tells an honest user their email is taken; the message never
-        # reveals the account's role or any other detail.
-        return (
-            jsonify(
-                {"error": {"code": 409, "message": "An account with this email already exists."}}
-            ),
-            409,
-        )
-
-    created_at = to_iso(utcnow())
-    with transaction() as tx:
-        cursor = tx.execute(
-            """
-            INSERT INTO users (full_name, email, password_hash, role, is_active, created_at)
-            VALUES (?, ?, ?, 'student', 1, ?)
-            """,
-            (
-                payload["full_name"].strip(),
-                email,
-                hash_password(payload["password"]),
-                created_at,
-            ),
-        )
-        user_id = cursor.lastrowid
-
-    user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return _token_response(user, status=201)
+    Students are provisioned by the university's student management system
+    (``POST /api/integration/students``). The route is kept so older clients get
+    a clear, actionable answer instead of a confusing 404.
+    """
+    return (
+        jsonify(
+            {
+                "error": {
+                    "code": 403,
+                    "message": (
+                        "Self-registration is disabled. Student accounts are issued by "
+                        "your school's student management system; staff accounts are "
+                        "created by an administrator."
+                    ),
+                }
+            }
+        ),
+        403,
+    )
 
 
 # ---------------------------------------------------------------------------

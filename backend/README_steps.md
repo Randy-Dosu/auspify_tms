@@ -76,3 +76,48 @@
   `ui_smoke.py` **62/62** on dev and on the rebuilt production preview
   (`npm run preview:build`), step0 30, step1 54, step2 79, step3 44, step4 68,
   e2e 43, step5 56, pytest 149 all still green.
+
+---
+
+## Step 7 — student provisioning by the Student Management System
+
+- **Self-registration removed.** `POST /api/auth/register` is now a 403 stub with
+  an explanatory message (kept so old clients get a useful answer instead of a
+  404). The React client lost its register page, route and `register()` action;
+  the login screen now says that credentials come from the school's student
+  management system.
+- **Signed server-to-server API** (`app/routes/integration.py`, `app/sms.py`):
+  - `POST /api/integration/handshake` — the SMS sends a challenge, the TMS signs
+    it, so the SMS can verify the TMS **before** releasing any student data.
+  - `POST /api/integration/students` — create or update one student
+    (`full_name`, `email`, `password`, `course`, `student_number`, `is_active`);
+    201 on create, 200 on update, idempotent by email.
+  - `POST /api/integration/students/status` — deactivate a withdrawn student
+    (login then fails) or reactivate them (clears any lockout).
+  - `POST /api/integration/students/lookup` — existence check that never
+    discloses staff accounts.
+- **How requests are protected:** HMAC-SHA256 over
+  `v1 \n METHOD \n PATH \n TIMESTAMP \n NONCE \n SHA256(body)`, constant-time
+  comparison, a ±300 s timestamp window and a one-time nonce persisted in the
+  new `sms_nonces` table (replay-proof). Replies are signed with
+  `X-TMS-Signature` bound to the request nonce. An optional `SMS_ALLOWED_IPS`
+  list pins the caller, and an empty `SMS_CLIENT_SECRET` turns the whole
+  integration off (503) rather than leaving it open.
+- **Data model:** `users` gains `course`, `student_number` (unique when set),
+  `provisioned_by` and `provisioned_at`; `db.py::_migrate_user_columns` adds them
+  to an existing database before `schema.sql` runs its partial unique index, so
+  upgrades in place work. `seed.py` now seeds courses and matriculation numbers
+  for the three demo students.
+- **Privilege safety:** the provisioning schema has no `role` field, staff
+  accounts cannot be converted (409), passwords are bcrypt-hashed on arrival and
+  never logged, and password rotation clears failed-login counters.
+- **Reference client:** `scripts/sms_client.py` (library + CLI) signs requests,
+  verifies every reply, and is used by `ui_smoke.py` and `e2e_check.py`, so the
+  integration is exercised on every run.
+- Verified: pytest **194 passed** (48 new integration tests), `verify_step1.py`
+  **68/68** (was 54), `e2e_check.py` **50/50** (was 43), `ui_smoke.py`
+  **67/67** on dev and on the production preview, vitest **45/45**, axe **12/12**
+  (0 violations across 11 screens), `ux_check.py` **56/56**, oxlint 0/0, build
+  OK, `npm audit` 0, step0 30, step2 79, step3 44, step4 68, step5 56 — all
+  green.
+

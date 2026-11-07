@@ -1,13 +1,22 @@
 """Step 1 verification: authentication, RBAC, lockout, rate limiting, hashing.
 
+Students are provisioned by the student management system (SMS) over a signed
+API, so the account-creation checks here run through that path and prove that
+self-registration is dead.
+
 Runs against throw-away SQLite databases so it never touches dev data.
 
     cd backend && .venv/bin/python ../scripts/verify_step1.py
 """
 
+import hashlib
+import hmac
+import json
 import os
+import secrets
 import sys
 import tempfile
+import time
 from datetime import timedelta
 
 BACKEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "backend")
@@ -22,6 +31,29 @@ from app.security import hash_password, to_iso, utcnow  # noqa: E402
 PASSED = 0
 FAILED = 0
 FAILURES = []
+
+# Shared secret for the SMS integration in this throw-away app.
+SMS_CLIENT_ID = "verify-sms"
+SMS_SECRET = "verify-sms-secret-" + "e" * 40
+
+
+def sms_post(client, path, payload, *, secret=SMS_SECRET, timestamp=None, nonce=None):
+    """Sign and send one provisioning request, the way the SMS would."""
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    timestamp = str(int(time.time())) if timestamp is None else str(timestamp)
+    nonce = secrets.token_hex(16) if nonce is None else nonce
+    canonical = "\n".join(
+        ["v1", "POST", path, timestamp, nonce, hashlib.sha256(body).hexdigest()]
+    )
+    signature = hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+    headers = {
+        "Content-Type": "application/json",
+        "X-SMS-Client": SMS_CLIENT_ID,
+        "X-SMS-Timestamp": timestamp,
+        "X-SMS-Nonce": nonce,
+        "X-SMS-Signature": f"v1={signature}",
+    }
+    return client.post(path, data=body, headers=headers)
 
 
 def check(label, condition, detail=""):
@@ -105,7 +137,16 @@ def main():
     # ------------------------------------------------------------------
     # Functional app: rate limits off so we can test lockout deterministically
     # ------------------------------------------------------------------
-    app = seed(create_app(make_config(RATELIMIT_ENABLED=False)), USERS)
+    app = seed(
+        create_app(
+            make_config(
+                RATELIMIT_ENABLED=False,
+                SMS_CLIENT_ID=SMS_CLIENT_ID,
+                SMS_CLIENT_SECRET=SMS_SECRET,
+            )
+        ),
+        USERS,
+    )
 
     with app.test_client() as client:
         section("Login / me / logout")
@@ -137,30 +178,149 @@ def main():
             wrong_pw.get_json(),
         )
 
-        section("Registration")
+        section("Self-registration is disabled")
+        for email in ("new@t.test", "s1@t.test", "admin@t.test"):
+            refused = client.post(
+                "/api/auth/register",
+                json={"full_name": "Self Service", "email": email, "password": "ValidPass1"},
+            )
+            check(
+                f"POST /api/auth/register is refused for {email}",
+                refused.status_code == 403,
+                refused.get_json(),
+            )
+        check(
+            "the refusal explains the SMS hand-off",
+            "student management system"
+            in refused.get_json()["error"]["message"].lower(),
+            refused.get_json(),
+        )
+        with app.app_context():
+            ghost = get_db().execute(
+                "SELECT id FROM users WHERE email = 'new@t.test'"
+            ).fetchone()
+        check("no account was created by the refused request", ghost is None)
+
+        section("Students are provisioned by the SMS")
+        created = sms_post(
+            client,
+            "/api/integration/students",
+            {
+                "full_name": "Provisioned Student",
+                "email": "new@t.test",
+                "password": "Provision1",
+                "course": "BSc Computer Science",
+                "student_number": "CS/2024/0100",
+            },
+        )
+        check("signed provisioning returns 201", created.status_code == 201, created.get_json())
+        check(
+            "the provisioned account is a student",
+            created.get_json()["student"]["role"] == "student",
+            created.get_json(),
+        )
+        check(
+            "course and student number are stored",
+            created.get_json()["student"]["course"] == "BSc Computer Science"
+            and created.get_json()["student"]["student_number"] == "CS/2024/0100",
+            created.get_json(),
+        )
+        check(
+            "the response never echoes the password",
+            "Provision1" not in created.get_data(as_text=True),
+            created.get_json(),
+        )
+
+        section("Provisioning is authenticated")
+        unsigned = client.post(
+            "/api/integration/students",
+            json={"full_name": "No Sig", "email": "nosig@t.test", "password": "ValidPass1"},
+        )
+        check("unsigned provisioning is 401", unsigned.status_code == 401, unsigned.get_json())
+        forged = sms_post(
+            client,
+            "/api/integration/students",
+            {"full_name": "Bad Sig", "email": "bad@t.test", "password": "ValidPass1"},
+            secret="wrong-secret-" + "x" * 32,
+        )
+        check("a bad signature is 401", forged.status_code == 401, forged.get_json())
+        stale = sms_post(
+            client,
+            "/api/integration/students",
+            {"full_name": "Stale", "email": "stale@t.test", "password": "ValidPass1"},
+            timestamp=int(time.time()) - 7200,
+        )
+        check("a stale timestamp is 401", stale.status_code == 401, stale.get_json())
+
+        section("Provisioned student can sign in")
+        provisioned_login = login(client, "new@t.test", "Provision1")
+        check(
+            "provisioned student logs in with the SMS password",
+            provisioned_login.status_code == 200,
+            provisioned_login.get_json(),
+        )
+        check(
+            "the login payload carries the SMS data",
+            provisioned_login.get_json()["user"]["course"] == "BSc Computer Science",
+            provisioned_login.get_json(),
+        )
+
+        section("Provisioning validation")
         weak = [
             ("short", "Ab1"),
             ("no digit", "onlyletters"),
             ("no letter", "12345678"),
         ]
         for label, password in weak:
-            r = client.post("/api/auth/register", json={"full_name": "Weak User", "email": f"weak{abs(hash(label)) % 1000}@t.test", "password": password})
-            check(f"weak password rejected ({label})", r.status_code == 400, r.get_json())
+            response = sms_post(
+                client,
+                "/api/integration/students",
+                {
+                    "full_name": "Weak User",
+                    "email": f"weak{abs(hash(label)) % 1000}@t.test",
+                    "password": password,
+                },
+            )
+            check(f"weak password rejected ({label})", response.status_code == 400, response.get_json())
 
-        duplicate = client.post("/api/auth/register", json={"full_name": "Dup User", "email": "s1@t.test", "password": "ValidPass1"})
-        check("duplicate email rejected (409)", duplicate.status_code == 409, duplicate.get_json())
-
-        mass = client.post(
-            "/api/auth/register",
-            json={"full_name": "Sneaky User", "email": "sneaky@t.test", "password": "SneakyPass1", "role": "admin"},
+        duplicate = sms_post(
+            client,
+            "/api/integration/students",
+            {
+                "full_name": "Provisioned Student",
+                "email": "new@t.test",
+                "password": "Provision1",
+                "course": "BSc Computer Science",
+                "student_number": "CS/2024/0100",
+            },
         )
-        check("register with role=admin still returns 201", mass.status_code == 201, mass.get_json())
-        check("mass assignment ignored: role is student", mass.get_json()["user"]["role"] == "student", mass.get_json())
+        check(
+            "re-sending the same record updates it instead of duplicating it",
+            duplicate.status_code == 200 and duplicate.get_json()["created"] is False,
+            duplicate.get_json(),
+        )
+        with app.app_context():
+            count = get_db().execute(
+                "SELECT COUNT(*) AS c FROM users WHERE email = 'new@t.test'"
+            ).fetchone()["c"]
+        check("no duplicate row was created", count == 1, count)
+
+        mass = sms_post(
+            client,
+            "/api/integration/students",
+            {
+                "full_name": "Sneaky User",
+                "email": "sneaky@t.test",
+                "password": "SneakyPass1",
+                "role": "admin",
+                "is_active": 0,
+            },
+        )
+        check("provisioning with role=admin still returns 201", mass.status_code == 201, mass.get_json())
+        check("mass assignment ignored: role is student", mass.get_json()["student"]["role"] == "student", mass.get_json())
         with app.app_context():
             row = get_db().execute("SELECT role FROM users WHERE email = ?", ("sneaky@t.test",)).fetchone()
         check("mass assignment ignored in the database", row["role"] == "student", dict(row))
-        if "access_token" in mass.get_json():
-            check("new account can immediately call /me", client.get("/api/auth/me", headers=auth(mass.get_json()["access_token"])).status_code == 200)
 
         section("Password storage")
         with app.app_context():

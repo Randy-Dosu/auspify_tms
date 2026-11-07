@@ -197,6 +197,7 @@ def _register_blueprints(app: Flask) -> None:
     from .routes.auth import bp as auth_bp
     from .routes.exams import bp as exams_bp
     from .routes.health import bp as health_bp
+    from .routes.integration import bp as integration_bp
     from .routes.reports import bp as reports_bp
 
     app.register_blueprint(health_bp, url_prefix="/api")
@@ -204,6 +205,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(exams_bp)
     app.register_blueprint(attempts_bp)
     app.register_blueprint(reports_bp)  # /api/reports/*
+    app.register_blueprint(integration_bp)  # /api/integration/* (SMS, HMAC-signed)
 
 
 def _register_error_handlers(app: Flask) -> None:

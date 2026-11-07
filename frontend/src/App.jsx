@@ -2,7 +2,6 @@ import { Route, Routes } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import ProtectedRoute from './auth/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
 import { DashboardRedirect } from './pages/Dashboards'
 import TeacherExamsPage from './pages/teacher/TeacherExamsPage'
 import ExamEditorPage from './pages/teacher/ExamEditorPage'
@@ -17,7 +16,7 @@ import { FullPageMessage } from './components/ui'
 /**
  * Application routes.
  *
- * /login and /register are public. Everything else sits behind
+ * /login is public. Everything else sits behind
  * <ProtectedRoute>, which redirects logged-out visitors to /login and blocks
  * wrong-role access with a 403 page.
  */
@@ -26,7 +25,6 @@ export default function App() {
     <Routes>
       <Route path="/" element={<DashboardRedirect />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
 
       <Route
         element={

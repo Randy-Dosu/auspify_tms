@@ -120,55 +120,35 @@ class TestTokens:
         assert response.status_code == 403
 
 
-class TestRegistration:
-    @pytest.mark.parametrize(
-        "password",
-        ["short1", "onlyletters", "12345678", "a" * 73],
-    )
-    def test_weak_passwords_are_rejected(self, client, password):
+class TestRegistrationDisabled:
+    """Students are provisioned by the SMS; the public route must do nothing."""
+
+    @pytest.mark.parametrize("email", ["weak@t.test", "student1@t.test", "not-an-email"])
+    def test_register_always_returns_403(self, client, email):
         response = client.post(
             "/api/auth/register",
-            json={"full_name": "Weak User", "email": "weak@t.test", "password": password},
+            json={"full_name": "Self Service", "email": email, "password": "ValidPass1"},
         )
-        assert response.status_code == 400
-        assert "password" in response.get_json()["error"]["fields"]
+        assert response.status_code == 403
+        assert "student management system" in response.get_json()["error"]["message"]
 
-    def test_duplicate_email_is_rejected(self, client):
-        response = client.post(
-            "/api/auth/register",
-            json={"full_name": "Copy Cat", "email": "student1@t.test", "password": "ValidPass1"},
-        )
-        assert response.status_code == 409
-
-    def test_mass_assignment_of_role_is_ignored(self, app, client):
+    def test_register_creates_nothing(self, app, client):
         from app.db import get_db
 
-        response = client.post(
+        client.post(
             "/api/auth/register",
             json={
                 "full_name": "Sneaky",
                 "email": "sneaky@t.test",
                 "password": "SneakyPass1",
                 "role": "admin",
-                "is_active": 0,
-                "failed_login_attempts": 0,
-                "id": 999,
             },
         )
-        assert response.status_code == 201
-        assert response.get_json()["user"]["role"] == "student"
         with app.app_context():
             row = get_db().execute(
-                "SELECT role, is_active FROM users WHERE email = ?", ("sneaky@t.test",)
+                "SELECT id FROM users WHERE email = ?", ("sneaky@t.test",)
             ).fetchone()
-        assert row["role"] == "student" and row["is_active"] == 1
-
-    def test_invalid_email_is_rejected(self, client):
-        response = client.post(
-            "/api/auth/register",
-            json={"full_name": "No At", "email": "not-an-email", "password": "ValidPass1"},
-        )
-        assert response.status_code == 400
+        assert row is None
 
 
 class TestEnumeration:
@@ -178,13 +158,19 @@ class TestEnumeration:
         assert unknown.status_code == wrong.status_code == 401
         assert unknown.get_json() == wrong.get_json()
 
-    def test_register_does_not_reveal_the_existing_role(self, client):
-        response = client.post(
+    def test_register_does_not_reveal_whether_an_account_exists(self, client):
+        """Existing and unknown emails get byte-identical answers."""
+        existing = client.post(
             "/api/auth/register",
             json={"full_name": "Probe", "email": "teacher@t.test", "password": "ValidPass1"},
         )
-        assert response.status_code == 409
-        assert "teacher" not in response.get_data(as_text=True).lower()
+        unknown = client.post(
+            "/api/auth/register",
+            json={"full_name": "Probe", "email": "nobody@t.test", "password": "ValidPass1"},
+        )
+        assert existing.status_code == unknown.status_code == 403
+        assert existing.get_json() == unknown.get_json()
+        assert "teacher" not in existing.get_data(as_text=True).lower()
 
     def test_disabled_account_matches_the_generic_message(self, client):
         response = login(client, "disabled@t.test", "DisabledPass1")
@@ -193,18 +179,27 @@ class TestEnumeration:
 
 
 class TestSecretsInResponses:
-    @pytest.mark.parametrize("endpoint", ["/api/auth/login", "/api/auth/register", "/api/auth/me"])
+    @pytest.mark.parametrize("endpoint", ["/api/auth/login", "/api/auth/me"])
     def test_passwords_never_appear_in_responses(self, client, tokens, endpoint):
         if endpoint == "/api/auth/me":
             response = client.get(endpoint, headers=bearer(tokens["student1@t.test"]))
+            secret_value = "StudentPass1"
         else:
             response = client.post(
-                endpoint,
-                json={"full_name": "Fresh User", "email": "fresh@t.test", "password": "StudentPass1"},
+                "/api/auth/login",
+                json={"email": "student1@t.test", "password": "StudentPass1"},
             )
+            secret_value = "StudentPass1"
         body = response.get_data(as_text=True)
         assert "password_hash" not in body
-        assert "StudentPass1" not in body
+        assert secret_value not in body
+
+    def test_provisioning_never_echoes_the_password(self, sms):
+        response = sms.provision("echo@t.test", password="EchoSecret123")
+        body = response.get_data(as_text=True)
+        assert response.status_code == 201
+        assert "EchoSecret123" not in body
+        assert "password_hash" not in body
 
     def test_password_hashes_are_not_logged(self, client, caplog):
         caplog.set_level(logging.DEBUG)

@@ -25,12 +25,16 @@ class TestSqlInjection:
         assert response.status_code != 500
 
     @pytest.mark.parametrize("payload", SQL_PAYLOADS)
-    def test_register_fields_are_parameterised(self, client, payload):
-        response = client.post(
-            "/api/auth/register",
-            json={"full_name": payload, "email": f"a{abs(hash(payload)) % 97}@t.test", "password": "ValidPass1"},
+    def test_provisioning_fields_are_parameterised(self, sms, payload):
+        """Names, courses and numbers from the SMS are bound, never executed."""
+        response = sms.provision(
+            f"a{abs(hash(payload)) % 97}@t.test",
+            name=payload,
+            password="ValidPass1",
+            course=payload,
+            student_number=f"N{abs(hash(payload)) % 977}",
         )
-        assert response.status_code in (201, 400), response.status_code
+        assert response.status_code in (201, 200, 400), response.status_code
         assert response.status_code != 500
 
     @pytest.mark.parametrize("payload", SQL_PAYLOADS)
@@ -63,7 +67,10 @@ class TestSqlInjection:
 
         for payload in SQL_PAYLOADS:
             login(client, payload, payload)
-            client.post("/api/auth/register", json={"full_name": payload, "email": "x@t.test", "password": "ValidPass1"})
+            client.post(
+                "/api/auth/register",
+                json={"full_name": payload, "email": "x@t.test", "password": "ValidPass1"},
+            )
         with app.app_context():
             db = get_db()
             tables = {row["name"] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}

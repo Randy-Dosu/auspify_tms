@@ -8,10 +8,10 @@ test cannot reach without one.
 
 | Evidence | Command | Result |
 | --- | --- | --- |
-| Accessibility (axe) on 12 screens | `cd frontend && npx vitest run src/test/a11y.test.jsx` | **13 tests pass**, 0 violations at any severity |
+| Accessibility (axe) on 11 screens | `cd frontend && npx vitest run src/test/a11y.test.jsx` | **12 tests pass**, 0 violations at any severity |
 | Static UX/a11y audit | `cd frontend && python3 ../scripts/ux_check.py` | **56 passed, 0 failed** |
-| UI behaviour suite | `cd frontend && npx vitest run` | **46 passed (8 files)** |
-| Live walk through every page | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | **62 / 62** (dev and production build) |
+| UI behaviour suite | `cd frontend && npx vitest run` | **45 passed (8 files)** |
+| Live walk through every page | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | **67 / 67** (dev and production build) |
 | Dependency health | `npm audit` | **0 vulnerabilities** (was 3 high) |
 
 ---
@@ -102,7 +102,7 @@ Every item below was found by running the checks in this review.
 
 ## 5. Screens audited
 
-`/login`, `/register`, student dashboard, student exam list, taking an exam,
+`/login`, student dashboard, student exam list, taking an exam,
 result + review, student progress, teacher exam list, exam editor, exam report,
 student report, and the 404 screen — each rendered with a mocked API and run
 through axe against the **loaded** state (not the spinner), with a meta-test
@@ -135,7 +135,7 @@ confirmation (delete exam, submit exam), inline field errors with
 
 ```bash
 cd frontend
-npx vitest run src/test/a11y.test.jsx   # axe on all 12 screens (+ meta check)
+npx vitest run src/test/a11y.test.jsx   # axe on all 11 screens (+ meta check)
 npx vitest run                          # 46 behaviour/UI tests
 python3 ../scripts/ux_check.py          # 56 static UX/a11y/design checks
 npm audit                               # dependency health

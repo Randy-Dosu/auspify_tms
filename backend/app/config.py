@@ -77,6 +77,24 @@ class Config:
     RATELIMIT_ENABLED = env_bool("RATELIMIT_ENABLED", default=True)
     RATELIMIT_HEADERS_ENABLED = True
 
+    # --- Student Management System (SMS) integration ----------------------
+    # Students cannot register themselves: their accounts are provisioned by
+    # the university's student management system over a server-to-server API.
+    # Every request is HMAC-SHA256 signed with a shared secret that never
+    # leaves the two servers, so no browser (and no stolen JWT) can call it.
+    SMS_CLIENT_ID = os.environ.get("SMS_CLIENT_ID", "sms-gateway")
+    # Empty secret = the integration is switched off (endpoints answer 503);
+    # there is deliberately no default, so a forgotten .env cannot silently
+    # enable an API that creates accounts.
+    SMS_CLIENT_SECRET = os.environ.get("SMS_CLIENT_SECRET", "")
+    # Reject requests whose timestamp is further than this from the server
+    # clock (replay window) and remember every nonce inside it.
+    SMS_MAX_SKEW_SECONDS = int(os.environ.get("SMS_MAX_SKEW_SECONDS", "300"))
+    # Optional source allow-list (comma-separated IPs). Empty = any IP, which
+    # is fine when the endpoints are reachable only through a private network.
+    SMS_ALLOWED_IPS = env_list("SMS_ALLOWED_IPS", "")
+    SMS_RATE_LIMIT = os.environ.get("SMS_RATE_LIMIT", "120 per minute")
+
     # --- Database (used from Step 1 onwards) ------------------------------
     # Stored under backend/instance/ which is git-ignored.
     _db_env = os.environ.get(

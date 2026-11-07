@@ -5,6 +5,10 @@ made of questions and options, students take them against a server-enforced
 timer, grading happens on the server inside a transaction, and teachers get
 performance reports with CSV export.
 
+Students do **not** create their own accounts: they are provisioned by the
+university's student management system over a signed server-to-server API, and
+sign in with the email and password the SMS issues.
+
 **Stack:** Python 3.11 · Flask 3 · SQLite · React 19 (Vite) · plain CSS · Recharts
 **Status:** all five build steps complete and verified (see [Verification](#9-verification)).
 
@@ -31,8 +35,10 @@ performance reports with CSV export.
 
 **Accounts and sessions**
 
-- Roles: `admin`, `teacher`, `student`. Students can self-register; teacher and
-  admin accounts are created only by an admin (`POST /api/auth/users`).
+- Roles: `admin`, `teacher`, `student`. Self-registration is disabled
+  (`POST /api/auth/register` answers 403): student accounts are provisioned by
+  the student management system, and teacher/admin accounts are created only by
+  an admin (`POST /api/auth/users`).
 - Passwords hashed with bcrypt (cost factor 12); policy: ≥ 8 characters with at
   least one letter and one digit.
 - Short-lived JWT access tokens (30 min, configurable). Logout revokes the token
@@ -40,6 +46,28 @@ performance reports with CSV export.
 - Account lockout: 5 failed logins → 15 minutes. Per-IP rate limiting on the
   login route (10/min by default). Identical error messages for unknown emails,
   wrong passwords and disabled accounts.
+
+**Student provisioning (SMS integration)**
+
+- The student management system pushes each student's record — full name,
+  email, course, matriculation number and password — to
+  `POST /api/integration/students`. Re-sending a record updates it, so the call
+  is safe to retry; a new password rotates the credential and clears any lockout.
+- Every request is **HMAC-SHA256 signed** over the method, path, timestamp,
+  nonce and a SHA-256 body digest, with a shared secret that never travels in
+  the request. Timestamps outside a ±5-minute window are refused and every nonce
+  is stored once, so a captured request cannot be replayed and a modified body
+  cannot pass.
+- **Both directions are verified.** Before the SMS releases any student data it
+  sends a challenge to `POST /api/integration/handshake`, and the TMS signs it;
+  every TMS reply carries `X-TMS-Signature` over the request nonce, so the SMS
+  can prove it is talking to the real TMS and not to an impostor.
+- The API can never escalate privileges: `role` is not part of the accepted
+  schema, staff accounts cannot be converted, passwords are bcrypt-hashed on
+  arrival, and the plain text value is never logged or returned.
+- `PUT`-style status calls deactivate a withdrawn student (login then fails) and
+  reactivate them; `students/lookup` answers "does this student exist?" without
+  disclosing staff accounts.
 
 **Exams (teacher / admin)**
 
@@ -93,7 +121,7 @@ performance reports with CSV export.
   opener, `aria-live` on the exam countdown and a `prefers-reduced-motion`
   fallback.
 - Each page has loading, empty, error and forbidden states.
-- Verified by `axe-core` on all 12 screens, a static UX audit
+- Verified by `axe-core` on all 11 screens, a static UX audit
   (`scripts/ux_check.py`) and the live walk in `ui_smoke.py` — see
   [frontend/UX_REVIEW.md](frontend/UX_REVIEW.md).
 
@@ -122,6 +150,7 @@ performance reports with CSV export.
 │   │   │                          # WAL, one connection per request, transactions
 │   │   ├── schema.sql             # tables + indexes (idempotent, CREATE IF NOT EXISTS)
 │   │   ├── security.py            # bcrypt, JWT, @role_required, current_user()
+│   │   ├── sms.py                 # HMAC request/response signing for the SMS API
 │   │   ├── schemas.py             # marshmallow request schemas (all validation)
 │   │   ├── services.py            # data-access helpers shared by the routes
 │   │   ├── grading.py             # scoring rules (single source of truth)
@@ -129,7 +158,8 @@ performance reports with CSV export.
 │   │   ├── extensions.py          # Flask-Limiter instance
 │   │   └── routes/
 │   │       ├── health.py          # GET /api/health
-│   │       ├── auth.py            # register, login, logout, me, admin user creation
+│   │       ├── auth.py            # login, logout, me, admin user creation
+│   │       ├── integration.py     # SMS provisioning (handshake, students, status)
 │   │       ├── exams.py           # exam/question CRUD + student exam endpoints
 │   │       ├── attempts.py        # start, answer, submit, get attempt, result
 │   │       └── reports.py         # exam / student / leaderboard reports (+ CSV)
@@ -142,6 +172,7 @@ performance reports with CSV export.
 │   │   ├── test_exam_integrity.py # answer leakage, timer, replay, double submit
 │   │   ├── test_validation.py     # malformed input -> clean 4xx, never 500
 │   │   ├── test_config_and_headers.py  # secrets, CORS, headers, debug, guards
+│   │   ├── test_sms_integration.py     # signing, replay, skew, provisioning rules
 │   │   └── pytest_report.txt      # saved output of the last full run
 │   ├── instance/                  # SQLite database (git-ignored)
 │   ├── pytest.ini                 # testpaths = tests
@@ -181,7 +212,8 @@ performance reports with CSV export.
 │   ├── verify_step3.py            # 44 checks — grading + result access
 │   ├── verify_step4.py            # 68 checks — reports + CSV hardening
 │   ├── verify_step5.py            # 56 checks — live security attacks
-│   ├── ui_smoke.py                # 62 checks — every page, over the UI origin
+│   ├── sms_client.py              # reference SMS client: signing + handshake + provisioning
+│   ├── ui_smoke.py                # 67 checks — every page, over the UI origin
 │   ├── ux_check.py                # 56 checks — design tokens, contrast, a11y, UX states
 │   └── e2e_check.py               # 43 checks — full walkthrough over real HTTP
 ├── COMPLETION_AUDIT.md            # README-vs-code audit: every claim re-verified
@@ -210,6 +242,17 @@ cp .env.example .env                     # then fill in the two keys (see §4)
 cd frontend
 npm install
 npm run dev                              # http://localhost:5173
+```
+
+There is no "create account" screen. To add a student by hand, run the
+reference SMS client (it signs the request exactly like a real student
+management system):
+
+```bash
+backend/.venv/bin/python scripts/sms_client.py handshake     # verify the TMS
+backend/.venv/bin/python scripts/sms_client.py provision \
+  --name "Efua Mensah" --email efua@uni.edu.gh \
+  --course "BSc Statistics" --number ST/2024/0100 --password 'St@ts2024x'
 ```
 
 Seeded development accounts (credentials come from `.env`, see `SEED_*`):
@@ -250,7 +293,12 @@ python -c "import secrets; print('JWT_SECRET_KEY=' + secrets.token_hex(32))"
 | `MAX_FAILED_LOGINS` | no | `5` | Failures before lockout |
 | `LOCKOUT_MINUTES` | no | `15` | Lockout duration |
 | `LOGIN_RATE_LIMIT` | no | `10 per minute` | Flask-Limiter limit for `/api/auth/login` |
-| `REGISTER_RATE_LIMIT` | no | `20 per minute` | Flask-Limiter limit for `/api/auth/register` |
+| `REGISTER_RATE_LIMIT` | no | `20 per minute` | Flask-Limiter limit for the disabled registration stub |
+| `SMS_CLIENT_ID` | no | `sms-gateway` | Identifier the SMS signs with |
+| `SMS_CLIENT_SECRET` | to enable | — | Shared HMAC secret; **empty switches the integration off (503)** |
+| `SMS_MAX_SKEW_SECONDS` | no | `300` | Accepted clock difference / replay window |
+| `SMS_ALLOWED_IPS` | no | — | Optional comma-separated source allow-list |
+| `SMS_RATE_LIMIT` | no | `120 per minute` | Flask-Limiter limit for `/api/integration/*` |
 | `RATELIMIT_STORAGE_URI` | no | `memory://` | Use Redis in production |
 | `RATELIMIT_ENABLED` | no | `1` | `0` disables the limiter (used by the pytest suite) |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | no | — | Used by `seed.py` |
@@ -285,6 +333,17 @@ erDiagram
         int     failed_login_attempts
         text    locked_until "UTC ISO-8601 or NULL"
         text    created_at
+        text    course "provisioned by the SMS"
+        text    student_number UK "matriculation number, NULL for staff"
+        text    provisioned_by "'sms:<client>' | 'seed' | 'admin' | 'local'"
+        text    provisioned_at "UTC ISO-8601 or NULL"
+    }
+
+    SMS_NONCES {
+        text    nonce PK "one-time value from the signed request"
+        text    client_id
+        text    seen_at
+        text    expires_at "pruned after the replay window"
     }
 
     TOKEN_BLOCKLIST {
@@ -350,10 +409,12 @@ erDiagram
 
 Conventions: timestamps are UTC ISO-8601 strings, booleans are `INTEGER 0/1`,
 every foreign key is declared and enforced with `PRAGMA foreign_keys = ON`.
-Indexes: unique `users(email)`, `users(role)`, `exams(created_by)`,
+Indexes: unique `users(email)`, unique `users(student_number)` (partial, only
+when not NULL), `users(role)`, `exams(created_by)`,
 `exams(is_published)`, `questions(exam_id)`, `options(question_id)`,
 `attempts(exam_id)`, `attempts(student_id)`, `attempts(exam_id, student_id)`,
-`answers(attempt_id)`, `answers(question_id)`, `token_blocklist(expires_at)`.
+`answers(attempt_id)`, `answers(question_id)`, `token_blocklist(expires_at)`,
+`sms_nonces(expires_at)`.
 
 ---
 
@@ -391,7 +452,7 @@ Roles: **A** = admin, **T** = teacher (own exams only), **S** = student, **—**
 
 | Method | Path | Roles | Notes |
 | --- | --- | --- | --- |
-| POST | `/auth/register` | — | students only; role is forced to `student` |
+| POST | `/auth/register` | — | **disabled** — always 403; students are provisioned by the SMS |
 | POST | `/auth/login` | — | rate limited; lockout after 5 failures; returns `access_token` + user |
 | POST | `/auth/logout` | any | revokes the presented token (`jti` blocklist) |
 | GET | `/auth/me` | any | current profile (role re-read from the database) |
@@ -426,6 +487,37 @@ Roles: **A** = admin, **T** = teacher (own exams only), **S** = student, **—**
 | --- | --- | --- | --- |
 | GET | `/attempts/<id>/result` | Owner, Owner-of-exam (T/A) | 404 for non-owners, 409 while in progress; `review_available` gates the answer key until the exam window closes |
 
+### Student provisioning (student management system only)
+
+These endpoints are **not** part of the browser API: no JWT, cookie or session
+can call them. Every request and every response is signed — the scheme is
+specified below and implemented in `backend/app/sms.py`.
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| POST | `/integration/handshake` | HMAC | signs the caller's `challenge` so the SMS can verify the TMS before releasing data |
+| POST | `/integration/students` | HMAC | create or update one student (`full_name`, `email`, `password`, `course`, `student_number`, `is_active`); 201 created, 200 updated |
+| POST | `/integration/students/status` | HMAC | activate / deactivate a provisioned student |
+| POST | `/integration/students/lookup` | HMAC | `{exists, student}`; never discloses staff accounts |
+
+All four are `POST` so the body is always covered by the signature.
+
+Request headers: `X-SMS-Client`, `X-SMS-Timestamp` (unix seconds),
+`X-SMS-Nonce` and `X-SMS-Signature: v1=<hex>`, where
+
+```
+canonical = "v1" \n METHOD \n PATH \n TIMESTAMP \n NONCE \n SHA256(body)
+signature = HMAC-SHA256(secret, canonical)
+```
+
+Replies carry `X-TMS-Timestamp` and `X-TMS-Signature` over
+`"v1-response" \n METHOD \n PATH \n STATUS \n TIMESTAMP \n REQUEST-NONCE \n SHA256(body)`.
+The handshake signature is
+`HMAC-SHA256(secret, "v1-handshake" \n CLIENT_ID \n CHALLENGE \n SERVER_TIME)`.
+
+`scripts/sms_client.py` is a working reference implementation (library + CLI)
+of the SMS side.
+
 ### Reports
 
 | Method | Path | Roles | Notes |
@@ -459,6 +551,15 @@ Full detail, findings and fixes: **[`backend/SECURITY_REPORT.md`](backend/SECURI
 - **Input validation** happens in marshmallow schemas plus defensive route
   checks; malformed input produces a clean 4xx with field details, never a 500.
   Bodies larger than 2 MB are rejected with 413.
+- **Integration API**: student provisioning is authenticated with HMAC-SHA256
+  over a SHA-256 body digest, a timestamp inside a ±5-minute window and a
+  one-time nonce stored in `sms_nonces` (so captured requests cannot be
+  replayed, and a single changed byte invalidates the signature). Comparisons
+  are constant-time, the secret has no default and the endpoints answer 503
+  while it is empty, an optional IP allow-list can pin the caller, and the API
+  refuses to touch staff accounts or accept a `role` field. Replies are signed
+  too, so both sides verify each other; passwords are bcrypt-hashed on arrival
+  and never logged.
 - **Browser protections**: CORS allow-list (never `*`), `X-Content-Type-Options:
   nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src
   'none'` and `Cache-Control: no-store` on `/api/*`, `Referrer-Policy:
@@ -484,17 +585,17 @@ in this README was re-checked against the code on 2026‑11‑07 — see
 | Step | Command | Expected |
 | --- | --- | --- |
 | 0 | `./scripts/verify_step0.sh` | `RESULT: 30 passed, 0 failed` |
-| 1 | `backend/.venv/bin/python scripts/verify_step1.py` | `54 passed, 0 failed` |
+| 1 | `backend/.venv/bin/python scripts/verify_step1.py` | `68 passed, 0 failed` |
 | 2 | `backend/.venv/bin/python scripts/verify_step2.py` | `79 passed, 0 failed` |
 | 3 | `backend/.venv/bin/python scripts/verify_step3.py` | `44 passed, 0 failed` |
 | 4 | `backend/.venv/bin/python scripts/verify_step4.py` | `68 passed, 0 failed` |
-| 5 | `cd backend && .venv/bin/python -m pytest` | `149 passed` |
+| 5 | `cd backend && .venv/bin/python -m pytest` | `194 passed` |
 | 5 | `cd backend && .venv/bin/python ../scripts/verify_step5.py` | `56 passed, 0 failed` |
-| e2e | `cd backend && .venv/bin/python ../scripts/e2e_check.py` | `43 passed, 0 failed` |
-| site | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | `62 passed, 0 failed` |
-| site (build) | `SITE_BASE=http://127.0.0.1:4173 .venv/bin/python ../scripts/ui_smoke.py` | `62 passed, 0 failed` |
-| UI | `cd frontend && npx vitest run` | `46 passed (8 files)` |
-| UI a11y | `cd frontend && npx vitest run src/test/a11y.test.jsx` | `13 passed`, 0 axe violations on 12 screens |
+| e2e | `cd backend && .venv/bin/python ../scripts/e2e_check.py` | `50 passed, 0 failed` |
+| site | `cd backend && .venv/bin/python ../scripts/ui_smoke.py` | `67 passed, 0 failed` |
+| site (build) | `SITE_BASE=http://127.0.0.1:4173 .venv/bin/python ../scripts/ui_smoke.py` | `67 passed, 0 failed` |
+| UI | `cd frontend && npx vitest run` | `45 passed (8 files)` |
+| UI a11y | `cd frontend && npx vitest run src/test/a11y.test.jsx` | `12 passed`, 0 axe violations on 11 screens |
 | UX | `cd frontend && python3 ../scripts/ux_check.py` | `56 passed, 0 failed` |
 | UI | `cd frontend && npx oxlint src && npm run build` | no findings, build OK |
 | deps | `cd frontend && npm audit` | `0 vulnerabilities` |
@@ -574,8 +675,8 @@ Re-running the whole UI verification takes about a minute:
 
 ```bash
 cd frontend
-npx vitest run src/test/a11y.test.jsx    # axe-core, 12 screens
-npx vitest run                           # 46 UI tests
+npx vitest run src/test/a11y.test.jsx    # axe-core, 11 screens
+npx vitest run                           # 45 UI tests
 python3 ../scripts/ux_check.py           # 56 static UX checks
 npm audit
 ```
